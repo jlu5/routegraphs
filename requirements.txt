@@ -1,0 +1,3 @@
+mrtparse (>= 2.2)
+Flask
+gunicorn

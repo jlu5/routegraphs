@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Route Grapher - highdef.network</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://highdef.network/style.css" rel="stylesheet">
+<style>
+.asnView, .asnView > button {
+    margin-left: 2em;
+}
+</style>
+</head>
+
+<body onload="doInit()">
+
+<script>
+function delAsn(asn) {
+    document.getElementById(`as_${asn}`).remove();
+    document.getElementById(`as_${asn}_view`).remove();
+}
+function addAsn(asn) {
+    let asnsContainer = document.getElementById("asn_list_view");
+    let asnsOptionsList = document.getElementById("asn_list");
+    let errorTextContainer = document.getElementById("error_text");
+
+    let asnDiv = document.getElementById(`as_${asn}`);
+    if (!asn) {
+        return;
+    }
+    if (isNaN(asn)) {
+        errorTextContainer.innerText = `Invalid AS number ${asn}`;
+        return;
+    }
+    if (asnDiv) {
+        errorTextContainer.innerText = `Already added: ${asn}`;
+        return;
+    }
+    errorTextContainer.innerText = "";
+    asnDiv = document.createElement("div");
+    asnDiv.id = `as_${asn}_view`;
+    asnDiv.classList.add("asnView");
+
+    let para = document.createElement("span");
+    para.innerText = asn;
+    asnDiv.appendChild(para);
+
+    let deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.innerText = "Remove";
+    deleteBtn.addEventListener('click', () => {
+        delAsn(asn);
+    });
+    asnDiv.appendChild(deleteBtn);
+    asnsContainer.appendChild(asnDiv);
+
+    let option = document.createElement("option");
+    option.value = asn;
+    option.innerText = asn;
+    option.id = `as_${asn}`;
+    option.selected = true;
+    asnsOptionsList.appendChild(option);
+}
+function addAsnListener() {
+    let addAsnInput = document.getElementById('add_asn_input');
+    addAsn(addAsnInput.value);
+    addAsnInput.value = "";
+}
+function doInit() {
+    let searchParams = new URL(document.location).searchParams;
+    document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
+    searchParams.getAll("asn").forEach(addAsn);
+}
+</script>
+
+<div class="main">
+    <h1>highdef.network</h1>
+<div class="container">
+
+    <h2>Route Grapher</h2>
+    <form action="" method="get">
+        <label for="ip_prefix">Target prefix:</label>
+        <input type="text" id="ip_prefix" name="ip_prefix" placeholder="e.g. 172.22.108.0/25"><br>
+
+        <label for="lname">ASNs to check:</label>
+        <input type="text" id="add_asn_input" placeholder="e.g. 4242421080">
+        <button onclick="addAsnListener()" type="button">Add</button>
+        <span id="error_text" class="info-error"></span><br>
+        <div id="asn_list_view"></div>
+
+        <select name="asn" id="asn_list" multiple hidden></select>
+        <input type="submit" onclick="addAsnListener()" value="Graph!">
+    </form>
+    <p>Backend: last updated {{ db_last_update }}</p>
+
+{% if error %}
+<p class="info-error">Error: {{ error }}</p>
+{% else %}
+{% endif %}
+
+{% if graph_svg %}
+<br>
+{{ graph_svg }}
+{% endif %}
+
+<h3>Notes</h3>
+<p>This tool uses MRT dumps from the dn42 <a href="https://dn42.dev/services/Route-Collector">Global Route Collector (GRC)</a>.</p>
+<ul>
+<li><span style="color: dodgerblue">Blue</span>: selected source ASN</li>
+<li><span style="color: lightgreen">Green</span>: origin ASN</li>
+<li><span style="border: white 1px solid; padding: 0 2px">Solid line</span>: this adjacency is known to exist from GRC paths</li>
+<li><span style="border: grey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
+</ul>
+</div>
+</div>
+</body>
+</html>

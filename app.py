@@ -32,7 +32,8 @@ def get_graph():
     except OSError:
         return 'Failed to load DB'
 
-    routegraph_data = routegraph.asns_paths_to_prefix(dbconn, target_prefix, asns)
+    length_margin = int(flask.request.args.get('length_margin'))
+    routegraph_data = routegraph.asns_paths_to_prefix(dbconn, target_prefix, asns, length_margin=length_margin)
     dot = routegraph.graph(asns, routegraph_data)
     return dot.pipe(format='svg').decode('utf-8')
 

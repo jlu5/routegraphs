@@ -69,6 +69,7 @@ function addAsnListener() {
 function doInit() {
     let searchParams = new URL(document.location).searchParams;
     document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
+    document.getElementById("length_margin").value = searchParams.get("length_margin") || 0;
     searchParams.getAll("asn").forEach(addAsn);
 }
 </script>
@@ -89,7 +90,10 @@ function doInit() {
         <div id="asn_list_view"></div>
 
         <select name="asn" id="asn_list" multiple hidden></select>
-        <input type="submit" onclick="addAsnListener()" value="Graph!">
+
+        <label for="length_margin">Show paths of minimum length plus: </label>
+        <input id="length_margin" name="length_margin" type="number" min="0" max="10" value="0" style="width: 3vw">
+        <br><input type="submit" onclick="addAsnListener()" value="Graph!">
     </form>
     <p>Backend: last updated {{ db_last_update }}</p>
 
@@ -108,8 +112,10 @@ function doInit() {
 <ul>
 <li><span style="color: dodgerblue">Blue</span>: selected source ASN</li>
 <li><span style="color: lightgreen">Green</span>: origin ASN</li>
-<li><span style="border: white 1px solid; padding: 0 2px">Solid line</span>: this adjacency is known to exist from GRC paths</li>
-<li><span style="border: grey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
+<li><span style="border: lightgrey 1px solid; padding: 0 2px">Solid line</span>: this path is known to exist from GRC data</li>
+<li><span style="border: lightgrey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
+<li><span style="border: #f88 1px solid; padding: 0 2px">Red line</span>: shortest path from source to destination</li>
+<li><span style="border: grey 1px solid; padding: 0 2px">Grey line</span>: longer (non-optimal) path from source to destination</li>
 </ul>
 </div>
 </div>

@@ -48,7 +48,7 @@ def index():
     try:
         db_last_update = os.stat(DB_FILENAME).st_mtime
         dt = datetime.datetime.utcfromtimestamp(db_last_update)
-        db_last_update = dt.strftime('%Y-%S-%d %H:%M:%S UTC')
+        db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
     except OSError as e:
         error = str(e)
     return flask.render_template('routegraph.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update)

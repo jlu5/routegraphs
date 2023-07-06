@@ -44,6 +44,7 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
     )
     minlen = float('inf')
     candidate_paths = collections.defaultdict(set)
+    guessed_upstreams = set()
     for collector_path_id in collector_paths.fetchall():
         path = get_path(dbconn, collector_path_id, start_asn=asn)
         if len(path) <= minlen:  # memory saving, ignore everything with longer length than current best
@@ -51,7 +52,6 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
         minlen = min(minlen, len(path))
     if minlen != float('inf'):
         print(f'Known best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
-        return PathsToPrefixResult(prefix, candidate_paths[minlen])
     else:
         print(f'No known paths FROM {asn} to {prefix}, searching for possible transit upstreams...')
         # Here we look for any ASes Y1, Y2, ... that received a prefix FROM the target AS X.
@@ -65,11 +65,12 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
         if not possible_transits:
             print(f"Could not find any adjacencies for {asn}")
 
-        guessed_upstreams = set()
+        guessed_upstreams.add(asn)
         for upstream in possible_transits:
             if upstream not in seen_asns:
                 seen_asns.add(asn)
                 recur_result = asn_paths_to_prefix(dbconn, prefix, upstream, seen_asns=seen_asns)
+                # Add the current ASN to the result of the recursive call
                 recur_result.paths = {(asn, *path) for path in recur_result.paths}
                 if recur_result.paths:
                     recur_path_len = len(next(iter(recur_result.paths)))
@@ -78,9 +79,8 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
                     minlen = min(minlen, recur_path_len)
                     guessed_upstreams |= recur_result.guessed_upstreams
 
-        # Add the current ASN to the result of the recursive call
         print(f'Guessed best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
-        return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams | {asn})
+    return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams)
 
 def asns_paths_to_prefix(dbconn, prefix, source_asns):
     summary = PathsToPrefixResult(prefix)

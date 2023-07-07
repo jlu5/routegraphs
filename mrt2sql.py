@@ -2,6 +2,7 @@
 """Export BGP routes info from MRT dumps into a SQLite DB for easier querying."""
 import argparse
 import enum
+import ipaddress
 import pathlib
 import sqlite3
 
@@ -59,7 +60,13 @@ def parse_mrt(mrt_filename, dbconn):
             if any(subtype in data['subtype'] for subtype in _ROUTE_SUBTYPES):
                 prefix_network = data['prefix']
                 prefix_length = data['length']
-                dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?)", (prefix_network, prefix_length))
+
+                ipn = ipaddress.ip_network(f'{prefix_network}/{prefix_length}')
+                network_address = ipn.network_address
+                broadcast_address = ipn.broadcast_address
+                dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)",
+                    (network_address.packed, prefix_length, broadcast_address.packed))
+
                 for rib_entry in data['rib_entries']:
                     for path_attribute in rib_entry['path_attributes']:
                         # AS_PATH=2
@@ -92,11 +99,11 @@ def parse_mrt(mrt_filename, dbconn):
                                         )
                             dbconn.execute(
                                 "INSERT OR IGNORE INTO PrefixPaths VALUES(?, ?, ?)",
-                                (prefix_network, prefix_length, path_id)
+                                (network_address.packed, prefix_length, path_id)
                             )
                             dbconn.execute(
                                 "INSERT OR IGNORE INTO PrefixOriginASNs VALUES(?, ?, ?)",
-                                (origin_asn, prefix_network, prefix_length)
+                                (origin_asn, network_address.packed, prefix_length)
                             )
     dbconn.commit()
 

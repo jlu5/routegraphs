@@ -33,14 +33,15 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
     print(f'asn_paths_to_prefix({prefix}, {asn}, seen_asns={seen_asns})')
     prefix_exists = dbconn.execute(
         '''SELECT * FROM Prefixes WHERE network==? AND length==?''',
-        (str(prefix.network_address), prefix.prefixlen)
+        (prefix.network_address.packed, prefix.prefixlen)
     )
     if not prefix_exists.fetchone():
         raise ValueError(f"Prefix {prefix} does not exist")
     seen_asns = seen_asns or set()
     collector_paths = dbconn.execute(
-        '''SELECT Paths.path_id FROM Paths INNER JOIN PrefixPaths ON Paths.path_id==PrefixPaths.path_id WHERE asn==? AND network==? AND length==?;''',
-        (asn, str(prefix.network_address), prefix.prefixlen)
+        '''SELECT Paths.path_id FROM Paths INNER JOIN PrefixPaths ON Paths.path_id==PrefixPaths.path_id
+        WHERE asn==? AND prefix_network==? AND prefix_length==?;''',
+        (asn, prefix.network_address.packed, prefix.prefixlen)
     )
     minlen = float('inf')
     candidate_paths = collections.defaultdict(set)

@@ -6,16 +6,17 @@ CREATE TABLE "ASNs" (
 
 -- All seen prefixes
 CREATE TABLE "Prefixes" (
-  "network" varchar,
+  "network" varbinary(16),
   "length" integer,
+  "broadcast_address" varbinary(16),
   PRIMARY KEY("network", "length")
 );
 
 -- Prefix <-> origin ASN mapping
 CREATE TABLE "PrefixOriginASNs" (
   "asn" integer,
-  "prefix_network" varchar,
-  "prefix_length" varchar,
+  "prefix_network" varbinary(16),
+  "prefix_length" integer,
   UNIQUE("asn", "prefix_network", "prefix_length"),
   FOREIGN KEY("prefix_network", "prefix_length") REFERENCES Prefixes("network", "length"),
   FOREIGN KEY("asn") REFERENCES ASNs("asn")
@@ -23,11 +24,11 @@ CREATE TABLE "PrefixOriginASNs" (
 
 -- Prefix -> path mapping. One prefix can have multiple paths, and vice versa (deduplicating paths shared by multiple prefixes)
 CREATE TABLE "PrefixPaths" (
-  "network" varchar,
-  "length" integer,
+  "prefix_network" varbinary(16),
+  "prefix_length" integer,
   "path_id" integer,
-  UNIQUE("network", "length", "path_id"),
-  FOREIGN KEY("network", "length") REFERENCES Prefixes("network", "length"),
+  UNIQUE("prefix_network", "prefix_length", "path_id"),
+  FOREIGN KEY("prefix_network", "prefix_length") REFERENCES Prefixes("network", "length"),
   FOREIGN KEY("path_id") REFERENCES Paths("path_id")
 );
 

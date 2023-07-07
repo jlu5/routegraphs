@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Flask frontend to routegraph"""
 import datetime
-import ipaddress
 import os
-import time
 
 import flask
 
@@ -17,7 +15,6 @@ if not DB_FILENAME:
 
 def get_graph():
     target_prefix = flask.request.args.get('ip_prefix')
-    target_prefix = ipaddress.ip_network(target_prefix, strict=False)
 
     asns = flask.request.args.getlist('asn')
     if not asns:
@@ -32,7 +29,7 @@ def get_graph():
     except OSError:
         return 'Failed to load DB'
 
-    routegraph_data = routegraph.asns_paths_to_prefix(dbconn, target_prefix, asns)
+    routegraph_data = routegraph.asns_paths_to_prefix(dbconn, target_prefix.strip(), asns)
     dot = routegraph.graph(asns, routegraph_data)
     return dot.pipe(format='svg').decode('utf-8')
 

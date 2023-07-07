@@ -24,20 +24,39 @@ class PathsToPrefixResult:
     paths: set = field(default_factory=set)
     guessed_upstreams: set = field(default_factory=set)
 
+def get_most_specific_prefix(dbconn, prefix_or_ip):
+    ipn = ipaddress.ip_network(prefix_or_ip, strict=False)
+    if ipn.num_addresses == 1:
+        ip = ipn.network_address
+        datalength = 16 if ipn.version == 6 else 4
+        matching_prefixes = dbconn.execute(
+            '''SELECT network, length FROM Prefixes WHERE network<=? AND broadcast_address>=? AND length(network)==? ORDER BY length DESC''',
+            (ip.packed, ip.packed, datalength)
+        )
+        match = matching_prefixes.fetchone()
+        if not match:
+            raise ValueError(f"No route found for {ipn}")
+        result = ipaddress.ip_network(match)
+    else:
+        prefix_exists = dbconn.execute(
+            '''SELECT * FROM Prefixes WHERE network==? AND length==?''',
+            (ipn.network_address.packed, ipn.prefixlen))
+        if not prefix_exists.fetchone():
+            raise ValueError(f"Prefix {ipn} does not exist")
+        result = ipn
+    print(f'get_most_specific_prefix: Resolving prefix {prefix_or_ip} -> {result}')
+    return result
+
 def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
     """
     Get a set of optimal paths from ASN to prefix.
 
     This returns a tuple (set of paths, whether the path is confirmed from dn42 GRC)
     """
-    print(f'asn_paths_to_prefix({prefix}, {asn}, seen_asns={seen_asns})')
-    prefix_exists = dbconn.execute(
-        '''SELECT * FROM Prefixes WHERE network==? AND length==?''',
-        (prefix.network_address.packed, prefix.prefixlen)
-    )
-    if not prefix_exists.fetchone():
-        raise ValueError(f"Prefix {prefix} does not exist")
+    #print(f'asn_paths_to_prefix({prefix}, {asn}, seen_asns={seen_asns})')
     seen_asns = seen_asns or set()
+    if isinstance(prefix, str):
+        prefix = get_most_specific_prefix(dbconn, prefix)
     collector_paths = dbconn.execute(
         '''SELECT Paths.path_id FROM Paths INNER JOIN PrefixPaths ON Paths.path_id==PrefixPaths.path_id
         WHERE asn==? AND prefix_network==? AND prefix_length==?;''',
@@ -84,9 +103,10 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
     return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams)
 
 def asns_paths_to_prefix(dbconn, prefix, source_asns):
-    summary = PathsToPrefixResult(prefix)
+    summary = PathsToPrefixResult('')
     for source_asn in source_asns:
         result = asn_paths_to_prefix(dbconn, prefix, source_asn)
+        summary.prefix = result.prefix
         summary.paths |= result.paths
         summary.guessed_upstreams |= result.guessed_upstreams
     return summary
@@ -145,8 +165,7 @@ def main():
 
     dbconn = getdb(args.db_filename)
 
-    prefix = ipaddress.ip_network(args.target, strict=False)
-    result = asns_paths_to_prefix(dbconn, prefix, args.source_asn)
+    result = asns_paths_to_prefix(dbconn, args.target, args.source_asn)
     if result:
         print("Paths to graph:", result)
         dot = graph(args.source_asn, result)

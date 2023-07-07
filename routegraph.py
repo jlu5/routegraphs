@@ -47,6 +47,7 @@ def get_most_specific_prefix(dbconn, prefix_or_ip):
     print(f'get_most_specific_prefix: Resolving prefix {prefix_or_ip} -> {result}')
     return result
 
+_MAX_SEEN_ASNS = 50
 def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
     """
     Get a set of optimal paths from ASN to prefix.
@@ -86,18 +87,22 @@ def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
             print(f"Could not find any adjacencies for {asn}")
 
         guessed_upstreams.add(asn)
-        for upstream in possible_transits:
-            if upstream not in seen_asns:
-                seen_asns.add(asn)
-                recur_result = asn_paths_to_prefix(dbconn, prefix, upstream, seen_asns=seen_asns)
-                # Add the current ASN to the result of the recursive call
-                recur_result.paths = {(asn, *path) for path in recur_result.paths}
-                if recur_result.paths:
-                    recur_path_len = len(next(iter(recur_result.paths)))
-                    if recur_path_len <= minlen:
-                        candidate_paths[recur_path_len] |= recur_result.paths
-                    minlen = min(minlen, recur_path_len)
-                    guessed_upstreams |= recur_result.guessed_upstreams
+        next_seen_asns = set(seen_asns) | set(possible_transits) | {asn}
+        if len(seen_asns) <= _MAX_SEEN_ASNS:
+            for upstream in possible_transits:
+                if upstream not in seen_asns:
+                    recur_result = asn_paths_to_prefix(
+                        dbconn, prefix, upstream, seen_asns=next_seen_asns)
+                    # Add the current ASN to the result of the recursive call
+                    recur_result.paths = {(asn, *path) for path in recur_result.paths}
+                    if recur_result.paths:
+                        recur_path_len = len(next(iter(recur_result.paths)))
+                        if recur_path_len <= minlen:
+                            candidate_paths[recur_path_len] |= recur_result.paths
+                        minlen = min(minlen, recur_path_len)
+                        guessed_upstreams |= recur_result.guessed_upstreams
+        else:
+            print(f'Exhausted search space ({len(seen_asns)} > {_MAX_SEEN_ASNS} ASNs), stopping...')
 
         print(f'Guessed best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
     return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams)

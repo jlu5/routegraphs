@@ -12,7 +12,7 @@ graph() {
     name="$1"
     set -x
     shift
-    python3 routegraph.py "$DB" "$DIR/$name".dot "$@"
+    python3 routegraphs.py "$DB" "$DIR/$name".dot "$@"
     dot -Tsvg "$DIR/$name".dot > "$DIR/$name".svg
     echo "Created $DIR/$name.svg"
     set +x

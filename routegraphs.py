@@ -131,7 +131,7 @@ def getdb(filename):
     return dbconn
 
 def graph(source_asns, result):
-    dot = graphviz.Digraph(comment=f'Connectivity to {result.prefix}',
+    dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
         node_attr={'penwidth': '1.5', 'margin': '0.02'})
     dot.attr(rankdir='LR')
     seen_edges = set()

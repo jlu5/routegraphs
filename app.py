@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Flask frontend to routegraph"""
 import datetime
+import json
 import os
 
 import flask
@@ -49,3 +50,12 @@ def index():
     except OSError as e:
         error = str(e)
     return flask.render_template('routegraph.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update)
+
+@app.route("/asn-most-peers.json")
+def get_suggested_asns():
+    try:
+        dbconn = routegraph.getdb(DB_FILENAME)
+    except OSError:
+        return 'Failed to load DB'
+    data = routegraph.get_suggested_asns(dbconn)
+    return json.dumps(data)

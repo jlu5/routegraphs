@@ -116,6 +116,10 @@ def asns_paths_to_prefix(dbconn, prefix, source_asns):
         summary.guessed_upstreams |= result.guessed_upstreams
     return summary
 
+def get_suggested_asns(dbconn, limit=10):
+    return dbconn.execute(
+        '''SELECT receiver_asn, COUNT(sender_asn) FROM NeighbourASNs GROUP BY receiver_asn ORDER BY COUNT(sender_asn) DESC LIMIT 10;''').fetchall()
+
 def _row_factory(_cursor, row):
     if len(row) == 1:
         return row[0]

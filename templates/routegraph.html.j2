@@ -6,8 +6,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://highdef.network/style.css" rel="stylesheet">
 <style>
-.asnView, .asnView > button {
-    margin-left: 2em;
+.asnView, .asnView > button, td > button {
+    margin-left: 1em;
+}
+td, th {
+    border: 1px solid white;
+    padding: 0 1em;
+}
+h3 {
+    margin-top: 0;
+    margin-bottom: 0.5em;
 }
 </style>
 </head>
@@ -66,10 +74,38 @@ function addAsnListener() {
     addAsn(addAsnInput.value);
     addAsnInput.value = "";
 }
-function doInit() {
+
+const _SUGGESTED_ASNS_FILENAME = "asn-most-peers.json";
+async function doInit() {
     let searchParams = new URL(document.location).searchParams;
     document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
     searchParams.getAll("asn").forEach(addAsn);
+
+    const asn_most_peers_resp = await fetch(_SUGGESTED_ASNS_FILENAME);
+    if (asn_most_peers_resp.ok) {
+        const table = document.getElementById('suggested_asns_table');
+        const asn_most_peers = await asn_most_peers_resp.json();
+        for (let row of asn_most_peers) {
+            const tr = document.createElement("tr");
+            for (let idx in row) {
+                const td = document.createElement("td");
+                const item = row[idx];
+                td.innerText = item;
+                if (idx == 0) {
+                    const addButton = document.createElement("button");
+                    addButton.addEventListener("click", () => {
+                        addAsn(item);
+                    });
+                    addButton.innerText = "Add";
+                    td.appendChild(addButton);
+                }
+                tr.appendChild(td);
+            }
+            table.appendChild(tr);
+        }
+    } else {
+        console.warn("Could not load suggested ASNs data:", asn_most_peers_resp.status, asn_most_peers_resp.statusText);
+    }
 }
 </script>
 
@@ -77,21 +113,29 @@ function doInit() {
     <h1>highdef.network</h1>
 <div class="container">
 
-    <h2>Route Grapher</h2>
-    <form action="" method="get">
-        <label for="ip_prefix">Target IP / prefix:</label>
-        <input type="text" id="ip_prefix" name="ip_prefix" placeholder="e.g. 172.22.108.0/25"><br>
+<h2>Route Grapher</h2>
 
-        <label for="lname">ASNs to check:</label>
-        <input type="text" id="add_asn_input" placeholder="e.g. 4242421080">
-        <button onclick="addAsnListener()" type="button">Add</button>
-        <span id="error_text" class="info-error"></span><br>
-        <div id="asn_list_view"></div>
+<div style="float: right">
+    <h3>Quick reference: largest ASes</h3>
+<table id="suggested_asns_table">
+<tr><th>ASN</th><th>Peer count</th></tr>
+</table>
+</div>
 
-        <select name="asn" id="asn_list" multiple hidden></select>
-        <input type="submit" onclick="addAsnListener()" value="Graph!">
-    </form>
-    <p>Backend: last updated {{ db_last_update }}</p>
+<form action="" method="get">
+    <label for="ip_prefix">Target IP / prefix:</label>
+    <input type="text" id="ip_prefix" name="ip_prefix" placeholder="e.g. 172.22.108.0/25"><br>
+
+    <label for="lname">ASNs to check:</label>
+    <input type="text" id="add_asn_input" placeholder="e.g. 4242421080">
+    <button onclick="addAsnListener()" type="button">Add</button>
+    <span id="error_text" class="info-error"></span><br>
+    <div id="asn_list_view"></div>
+
+    <select name="asn" id="asn_list" multiple hidden></select>
+    <input type="submit" onclick="addAsnListener()" value="Graph!">
+</form>
+<p>Backend: last updated {{ db_last_update }}</p>
 
 {% if error %}
 <p class="info-error">Error: {{ error }}</p>

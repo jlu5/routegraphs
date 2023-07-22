@@ -49,6 +49,7 @@ def index():
         db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
     except OSError as e:
         error = str(e)
+        db_last_update = None
     return flask.render_template('routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update)
 
 @app.route("/asn-most-peers.json")

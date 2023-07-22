@@ -1,0 +1,23 @@
+# Based off https://docs.gunicorn.org/en/latest/deploy.html#systemd
+[Unit]
+Description=routegraphs gunicorn
+Requires=routegraphs.socket
+After=network.target
+
+[Service]
+Type=notify
+# the specific user that our service will run as
+User=dn42-automation
+Group=nogroup
+RuntimeDirectory=gunicorn
+# Set this to your virtualenv path
+WorkingDirectory=/opt/dn42/routegraphs
+ExecStart=/opt/dn42/routegraphs/venv/bin/gunicorn --pythonpath=. app:app
+Environment=ROUTEGRAPHS_DB=data/dn42.db
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

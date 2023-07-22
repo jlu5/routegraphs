@@ -80,6 +80,13 @@ function addAsnListener() {
 }
 
 const _SUGGESTED_ASNS_FILENAME = "asn-most-peers.json";
+const _SAMPLE_QUERIES = [
+    ["dn42 DNS (anycast)", ["172.20.0.53", "172.23.0.53", "fd42:d42:d42:54::1", "fd42:d42:d42:53::1"]],
+    ["whois.dn42 (anycast)", ["172.22.0.43", "fd42:d42:d42:43::1"]],
+    ["wiki.dn42", ["172.23.0.80", "fd42:d42:d42:80::1"]],
+    ["map.dn42", ["172.23.91.125", "fd42:4242:2189:e9::1"]],
+    ["dns.highdef.dn42", ["172.22.108.53", "fd86:bad:11b7:53::2"]],
+]
 async function doInit() {
     let searchParams = new URL(document.location).searchParams;
     document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
@@ -109,6 +116,22 @@ async function doInit() {
         }
     } else {
         console.warn("Could not load suggested ASNs data:", asn_most_peers_resp.status, asn_most_peers_resp.statusText);
+    }
+    const sampleQueriesContainer = document.getElementById("sample_queries");
+    for (const [sampleQueryName, sampleQueryIPs] of _SAMPLE_QUERIES) {
+        const li = document.createElement("li");
+        li.append(`${sampleQueryName}: `);
+        for (const ip of sampleQueryIPs) {
+            const span = document.createElement("span");
+            span.classList.add("link");
+            span.innerText = ip;
+            span.addEventListener('click', () => {
+                document.getElementById("ip_prefix").value = ip;
+            });
+            li.appendChild(span);
+            li.append(" ");
+        }
+        sampleQueriesContainer.appendChild(li);
     }
 }
 </script>
@@ -150,6 +173,10 @@ async function doInit() {
 <br>
 {{ graph_svg }}
 {% endif %}
+
+<h3>Sample Queries</h3>
+<ul id="sample_queries">
+</ul>
 
 <h3>Notes</h3>
 <p>This tool uses MRT dumps from the dn42 <a href="https://dn42.dev/services/Route-Collector">Global Route Collector (GRC)</a>.</p>

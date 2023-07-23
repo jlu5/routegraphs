@@ -1,4 +1,4 @@
-mrtparse (>= 2.2)
+pybgpkit_parser
 Flask
 gunicorn
 graphviz

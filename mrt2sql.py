@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Export BGP routes info from MRT dumps into a SQLite DB for easier querying."""
 import argparse
-import ipaddress
 import pathlib
+import socket
 import sqlite3
 
 import pybgpkit_parser
@@ -26,12 +26,22 @@ def parse_mrt(mrt_filename, dbconn):
         feed_asn = entry['peer_asn']
         dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1)", (feed_asn,))
 
-        ipn = ipaddress.ip_network(entry['prefix'])
-        prefix_length = ipn.prefixlen
-        network_address = ipn.network_address
-        broadcast_address = ipn.broadcast_address
+        network_address, prefix_length = entry['prefix'].split('/', 1)
+        prefix_length = int(prefix_length)
+        if ':' in network_address:
+            ip_bits = 128
+            socket_family = socket.AF_INET6
+        else:
+            ip_bits = 32
+            socket_family = socket.AF_INET
+
+        # This part used to use the Python ipaddress module, but that is much slower than doing a bit of math ourselves
+        network_address_packed = socket.inet_pton(socket_family, network_address)
+        broadcast_mask = (1<<(ip_bits-prefix_length))-1
+        broadcast_address = int.from_bytes(network_address_packed, 'big') | broadcast_mask
+        broadcast_address_packed = broadcast_address.to_bytes(ip_bits//8, 'big')
         dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)",
-            (network_address.packed, prefix_length, broadcast_address.packed))
+            (network_address_packed, prefix_length, broadcast_address_packed))
 
         as_path = tuple(map(int, entry['as_path'].split()))
         origin_asn = as_path[-1]
@@ -60,11 +70,11 @@ def parse_mrt(mrt_filename, dbconn):
                     )
         dbconn.execute(
             "INSERT OR IGNORE INTO PrefixPaths VALUES(?, ?, ?)",
-            (network_address.packed, prefix_length, path_id)
+            (network_address_packed, prefix_length, path_id)
         )
         dbconn.execute(
             "INSERT OR IGNORE INTO PrefixOriginASNs VALUES(?, ?, ?)",
-            (origin_asn, network_address.packed, prefix_length)
+            (origin_asn, network_address_packed, prefix_length)
         )
     dbconn.commit()
 

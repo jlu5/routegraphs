@@ -2,6 +2,7 @@
 """Export BGP routes info from MRT dumps into a SQLite DB for easier querying."""
 import argparse
 import pathlib
+import re
 import socket
 import sqlite3
 
@@ -16,12 +17,12 @@ def db_init(db_filename):
     con.commit()
     return con
 
+# FIXME(clearnet support): this is not entirely correct
+# what does it mean to have multiple origin ASes but the rest of the path be the same?
+_AS_PATH_SEGMENT_RE = re.compile('\\{(\\d+)')
 def parse_mrt(mrt_filename, dbconn):
-    mrt_reader = pybgpkit_parser.Parser(mrt_filename)
+    mrt_reader = pybgpkit_parser.Parser(mrt_filename, filters={'type': 'announce'})
     for entry in mrt_reader:
-        if entry['elem_type'] != 'A':
-            continue
-
         # Feed ASN
         feed_asn = entry['peer_asn']
         dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1)", (feed_asn,))
@@ -43,9 +44,25 @@ def parse_mrt(mrt_filename, dbconn):
         dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)",
             (network_address_packed, prefix_length, broadcast_address_packed))
 
-        as_path = tuple(map(int, entry['as_path'].split()))
-        origin_asn = as_path[-1]
-        #print(f"Adding: {prefix_network}/{prefix_length} PATH {as_path}")
+        as_path = entry['as_path'].split()
+        as_path_parts = []
+        ok = True
+        for path_segment in as_path:
+            try:
+                asn = int(path_segment)
+            except ValueError:
+                match = _AS_PATH_SEGMENT_RE.match(path_segment)
+                if not match:
+                    print(f"WARN: Ignoring unsupported AS path {as_path!r}")
+                    ok = False
+                    break
+                asn = int(match.group(1))
+                print(f"Guessing origin ASN {path_segment!r} -> {asn} for path {as_path!r}")
+            as_path_parts.append(asn)
+        if not ok:
+            continue
+        as_path = tuple(as_path_parts)
+
         path_id = hash(as_path)
         for path_index, asn in enumerate(as_path):
             dbconn.execute(
@@ -61,7 +78,7 @@ def parse_mrt(mrt_filename, dbconn):
                     "INSERT OR IGNORE INTO NeighbourASNs(receiver_asn, sender_asn) VALUES(?, ?)",
                     (previous_asn, asn)
                 )
-                if origin_asn != asn:
+                if as_path[-1] != asn:
                     # If the prefix origin isn't the current ASN, that means this AS provides
                     # transit for the one before it in the path
                     dbconn.execute(
@@ -74,7 +91,7 @@ def parse_mrt(mrt_filename, dbconn):
         )
         dbconn.execute(
             "INSERT OR IGNORE INTO PrefixOriginASNs VALUES(?, ?, ?)",
-            (origin_asn, network_address_packed, prefix_length)
+            (as_path[-1], network_address_packed, prefix_length)
         )
     dbconn.commit()
 

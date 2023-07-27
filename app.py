@@ -26,12 +26,12 @@ def get_graph():
         raise ValueError(f'Invalid ASN in request: {asns!r}') from e
 
     try:
-        dbconn = routegraphs.getdb(DB_FILENAME)
+        backend = routegraphs.RouteGraph(DB_FILENAME)
     except OSError:
         return 'Failed to load DB'
 
-    routegraph_data = routegraphs.asns_paths_to_prefix(dbconn, target_prefix.strip(), asns)
-    dot = routegraphs.graph_result(asns, routegraph_data)
+    routegraph_data = backend.asns_paths_to_prefix(target_prefix.strip(), asns)
+    dot = backend.graph_result(asns, routegraph_data)
     return dot.pipe(format='svg').decode('utf-8')
 
 @app.route("/")
@@ -55,8 +55,9 @@ def index():
 @app.route("/asn-most-peers.json")
 def get_suggested_asns():
     try:
-        dbconn = routegraphs.getdb(DB_FILENAME)
+        backend = routegraphs.RouteGraph(DB_FILENAME)
     except OSError:
         return 'Failed to load DB'
-    data = routegraphs.get_suggested_asns(dbconn)
+
+    data = backend.get_suggested_asns()
     return json.dumps(data)

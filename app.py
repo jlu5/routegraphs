@@ -31,7 +31,7 @@ def get_graph():
         return 'Failed to load DB'
 
     routegraph_data = routegraphs.asns_paths_to_prefix(dbconn, target_prefix.strip(), asns)
-    dot = routegraphs.graph(asns, routegraph_data)
+    dot = routegraphs.graph_result(asns, routegraph_data)
     return dot.pipe(format='svg').decode('utf-8')
 
 @app.route("/")

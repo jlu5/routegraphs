@@ -8,14 +8,13 @@ import ipaddress
 import sqlite3
 
 import graphviz
+import networkx
 
-def get_path(dbconn, path_id, start_asn=None):
+def get_path(dbconn, path_id, start_index=0):
     query = dbconn.execute(
-        '''SELECT asn FROM Paths WHERE path_id==? ORDER BY list_index''', (path_id,)
+        '''SELECT asn FROM Paths WHERE path_id==? AND list_index >= ? ORDER BY list_index''', (path_id, start_index)
     )
     path = query.fetchall()
-    if start_asn in path:
-        path = path[path.index(start_asn):]
     return tuple(path)
 
 @dataclass
@@ -47,63 +46,49 @@ def get_most_specific_prefix(dbconn, prefix_or_ip):
     print(f'get_most_specific_prefix: Resolving prefix {prefix_or_ip} -> {result}')
     return result
 
-_MAX_SEEN_ASNS = 50
-def asn_paths_to_prefix(dbconn, prefix, asn, seen_asns=None):
+def asn_paths_to_prefix(dbconn, prefix, asn):
     """
     Get a set of optimal paths from ASN to prefix.
 
     This returns a tuple (set of paths, whether the path is confirmed from dn42 GRC)
     """
-    #print(f'asn_paths_to_prefix({prefix}, {asn}, seen_asns={seen_asns})')
-    seen_asns = seen_asns or set()
     if isinstance(prefix, str):
         prefix = get_most_specific_prefix(dbconn, prefix)
     collector_paths = dbconn.execute(
-        '''SELECT Paths.path_id FROM Paths INNER JOIN PrefixPaths ON Paths.path_id==PrefixPaths.path_id
+        '''SELECT Paths.path_id, Paths.list_index FROM Paths INNER JOIN PrefixPaths ON Paths.path_id==PrefixPaths.path_id
         WHERE asn==? AND prefix_network==? AND prefix_length==?;''',
         (asn, prefix.network_address.packed, prefix.prefixlen)
     )
     minlen = float('inf')
     candidate_paths = collections.defaultdict(set)
     guessed_upstreams = set()
-    for collector_path_id in collector_paths.fetchall():
-        path = get_path(dbconn, collector_path_id, start_asn=asn)
-        if len(path) <= minlen:  # memory saving, ignore everything with longer length than current best
+    for collector_path_id, asn_index in collector_paths.fetchall():
+        path = get_path(dbconn, collector_path_id, start_index=asn_index)
+        if len(path) <= minlen:  # don't bother adding anything with longer length than current shortest
             candidate_paths[len(path)].add(path)
         minlen = min(minlen, len(path))
     if minlen != float('inf'):
         print(f'Known best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
     else:
-        print(f'No known paths FROM {asn} to {prefix}, searching for possible transit upstreams...')
-        # Here we look for any ASes Y1, Y2, ... that received a prefix FROM the target AS X.
-        # We'll guess that these are upstreams for the X since full transit in dn42 is so common,
-        # although we cannot be sure, because we don't have any collector data for X or its downstreams
-        possible_transits = dbconn.execute(
-            '''SELECT receiver_asn FROM NeighbourASNs WHERE sender_asn=?;''',
-            (asn,)
-        ).fetchall()
-        print(f"Guessing transits for {asn}:", possible_transits)
-        if not possible_transits:
-            print(f"Could not find any adjacencies for {asn}")
+        edges = dbconn.execute('''SELECT receiver_asn, sender_asn FROM NeighbourASNs''')
+        graph = networkx.Graph()
+        for edge in edges:
+            graph.add_edge(*edge)
+        origin_asns = dbconn.execute(
+            '''SELECT asn FROM PrefixOriginASNs WHERE prefix_network=? AND prefix_length=?''',
+            (prefix.network_address.packed, prefix.prefixlen)).fetchall()
+        for target_asn in origin_asns:
+            print(f"Computing paths from {asn} -> {target_asn}")
+            paths = set()
+            for path in networkx.all_shortest_paths(graph, asn, target_asn):
+                if len(path) <= minlen:
+                    paths.add(tuple(path))
+                    minlen = len(path)
+                else:
+                    break  # Don't bother adding paths longer than minimum
+            candidate_paths[minlen] |= paths
 
         guessed_upstreams.add(asn)
-        next_seen_asns = set(seen_asns) | set(possible_transits) | {asn}
-        if len(seen_asns) <= _MAX_SEEN_ASNS:
-            for upstream in possible_transits:
-                if upstream not in seen_asns:
-                    recur_result = asn_paths_to_prefix(
-                        dbconn, prefix, upstream, seen_asns=next_seen_asns)
-                    # Add the current ASN to the result of the recursive call
-                    recur_result.paths = {(asn, *path) for path in recur_result.paths}
-                    if recur_result.paths:
-                        recur_path_len = len(next(iter(recur_result.paths)))
-                        if recur_path_len <= minlen:
-                            candidate_paths[recur_path_len] |= recur_result.paths
-                        minlen = min(minlen, recur_path_len)
-                        guessed_upstreams |= recur_result.guessed_upstreams
-        else:
-            print(f'Exhausted search space ({len(seen_asns)} > {_MAX_SEEN_ASNS} ASNs), stopping...')
-
         print(f'Guessed best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
     return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams)
 
@@ -130,7 +115,7 @@ def getdb(filename):
     dbconn.row_factory = _row_factory
     return dbconn
 
-def graph(source_asns, result):
+def graph_result(source_asns, result):
     dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
         node_attr={'penwidth': '1.5', 'margin': '0.02'})
     dot.attr(rankdir='LR')
@@ -177,7 +162,7 @@ def main():
     result = asns_paths_to_prefix(dbconn, args.target, args.source_asn)
     if result:
         print("Paths to graph:", result)
-        dot = graph(args.source_asn, result)
+        dot = graph_result(args.source_asn, result)
         dot.save(args.out_filename)
 
 

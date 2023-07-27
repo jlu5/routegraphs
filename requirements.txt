@@ -2,3 +2,4 @@ pybgpkit_parser
 Flask
 gunicorn
 graphviz
+networkx

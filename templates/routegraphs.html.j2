@@ -1,28 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<title>Route Grapher - highdef.network</title>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://highdef.network/style.css" rel="stylesheet">
-<style>
-.asnView, .asnView > button {
-    margin-left: 1em;
-}
-td > button {
-    float: right;
-    margin-left: 1em;
-}
-td, th {
-    border: 1px solid white;
-    padding: 0 0.3em;
-}
-h3 {
-    margin-top: 0;
-    margin-bottom: 0.5em;
-}
-</style>
-</head>
+{% set page_title = 'Route Grapher' %}
+{% include "head.html.j2" %}
 
 <body onload="doInit()">
 
@@ -186,7 +165,7 @@ async function doInit() {
 <li><span style="border: white 1px solid; padding: 0 2px">Solid line</span>: this adjacency is known to exist from GRC paths</li>
 <li><span style="border: grey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
 </ul>
-</div>
-</div>
+</div> <!-- container -->
+</div> <!-- main -->
 </body>
 </html>

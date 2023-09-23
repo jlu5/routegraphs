@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Flask frontend to routegraph"""
+from dataclasses import dataclass
 import datetime
 import json
 import os
+import socket
 import sqlite3
 import traceback
+from typing import Any, Iterable, List, Optional
 
 import flask
 import networkx
@@ -16,6 +19,17 @@ app = flask.Flask(__name__)
 DB_FILENAME = os.environ.get('ROUTEGRAPHS_DB')
 if not DB_FILENAME:
     raise ValueError("Must specify ROUTEGRAPHS_DB environment variable")
+
+_EMOJI_TRUE = '✅'
+_EMOJI_FALSE = '❌'
+_EMOJI_UNKNOWN = '❓'
+@dataclass
+class Table():
+    name: str
+    headings: List[str]
+    data: List[Iterable[Any]]  # list of rows
+    true_emoji: str = _EMOJI_TRUE
+    false_emoji: str = _EMOJI_FALSE
 
 def wrap_get_backend(f):
     """
@@ -60,6 +74,7 @@ def index():
         except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
             error = str(e)
     try:
+        # TODO: move this into a helper
         db_last_update = os.stat(DB_FILENAME).st_mtime
         dt = datetime.datetime.utcfromtimestamp(db_last_update)
         db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -73,3 +88,89 @@ def index():
 def get_suggested_asns(backend):
     data = backend.get_suggested_asns()
     return json.dumps(data)
+
+def _get_asn_link(asn):
+    return f'<a href="/asn/{asn}">{asn}</a>'
+
+@app.route("/asns")
+@wrap_get_backend
+def get_asns(backend):
+    data = []
+    for row in backend.dbconn.execute(
+        '''SELECT local_asn, name, COUNT(peer_asn), direct_feed FROM
+        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
+        FROM NeighbourASNs UNION
+        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
+        FROM NeighbourASNs)
+        INNER JOIN ASNs on ASNs.asn = local_asn
+        GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC;'''):
+        asn, name, n_upstreams, direct_feed = row
+        direct_feed = bool(direct_feed)
+        data.append((_get_asn_link(asn), name, n_upstreams, direct_feed))
+    return flask.render_template(
+        'table-generic.html.j2',
+        page_title='All ASNs',
+        tables=[
+            Table('All Visible Networks',
+                  ['AS Number', 'AS Name', '# downstreams', 'Route server feed?'],
+                  data)
+        ])
+
+@app.route("/asn/<asn>")
+@wrap_get_backend
+def get_asn_info(backend, asn):
+    asn_prefixes = []
+    asn = int(asn)
+    as_name = backend.dbconn.execute(
+        '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
+    for row in backend.dbconn.execute(
+        '''SELECT prefix_network, prefix_length FROM PrefixOriginASNs
+        WHERE asn == ?;''', (asn,)):
+        network_binary, prefix_length = row
+        network = socket.inet_ntop(
+            socket.AF_INET6 if len(network_binary) == 16 else socket.AF_INET,
+            network_binary)
+        cidr = f'{network}/{prefix_length}'
+        asn_prefixes.append((cidr,))
+
+    direct_feeds = set(backend.dbconn.execute(
+        '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))
+
+    asn_peers = []
+    for row in backend.dbconn.execute(
+        '''SELECT DISTINCT peer_asn, name, MAX(receives_transit), MAX(sends_transit) FROM
+        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn, transit AS receives_transit, 0 AS sends_transit
+        FROM NeighbourASNs UNION
+        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn, 0 AS receives_transit, transit AS sends_transit
+        FROM NeighbourASNs)
+        INNER JOIN ASNs on ASNs.asn = peer_asn
+        WHERE local_asn = ? AND peer_asn <> local_asn
+        GROUP BY peer_asn''', (asn,)):
+        peer_asn, peer_as_name, receives_transit, sends_transit = row
+        # We only know for sure whether an ASN receives transit if they are a direct feed...
+        if sends_transit:
+            sends_transit = _EMOJI_TRUE
+        elif peer_asn in direct_feeds:
+            sends_transit = _EMOJI_FALSE
+        else:
+            sends_transit = _EMOJI_UNKNOWN
+
+        if receives_transit:
+            receives_transit = _EMOJI_TRUE
+        elif asn in direct_feeds:
+            receives_transit = _EMOJI_FALSE
+        else:
+            receives_transit = _EMOJI_UNKNOWN
+        asn_peers.append((_get_asn_link(peer_asn), peer_as_name, receives_transit, sends_transit))
+
+    return flask.render_template(
+        'table-generic.html.j2',
+        page_title=f'AS info for {asn}',
+        tables=[
+            Table(f'{asn} - {as_name} Prefixes',
+                  ['Prefix'],
+                  asn_prefixes),
+            Table(f'{asn} - {as_name} Peers',
+                  ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
+                  asn_peers)
+        ])

@@ -16,7 +16,7 @@ Then, enter it and install dependencies with `pip install -r requirements.txt`
 
 ### Backend
 
-The backend script `mrt2sql.py` reads routes, adjacencies, etc. from MRT dumps and converts it into a SQLite database for querying. This process takes a a few minutes and can probably be optimized further: currently ~3min to read IPv4 + IPv6 dn42 tables.
+The backend script `mrt2sql.py` reads routes, adjacencies, etc. from MRT dumps and converts it into a SQLite database for querying. This process takes a a few minutes and can probably be optimized further: currently ~2min to read IPv4 + IPv6 dn42 tables.
 
 ```
 usage: mrt2sql.py [-h] db_filename mrt_filenames [mrt_filenames ...]

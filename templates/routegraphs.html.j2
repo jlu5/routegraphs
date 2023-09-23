@@ -58,7 +58,6 @@ function addAsnListener() {
     addAsnInput.value = "";
 }
 
-const _SUGGESTED_ASNS_FILENAME = "asn-most-peers.json";
 const _SAMPLE_QUERIES = [
     ["dn42 DNS (anycast)", ["172.20.0.53", "172.23.0.53", "fd42:d42:d42:54::1", "fd42:d42:d42:53::1"]],
     ["whois.dn42 (anycast)", ["172.22.0.43", "fd42:d42:d42:43::1"]],
@@ -71,31 +70,6 @@ async function doInit() {
     document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
     searchParams.getAll("asn").forEach(addAsn);
 
-    const asn_most_peers_resp = await fetch(_SUGGESTED_ASNS_FILENAME);
-    if (asn_most_peers_resp.ok) {
-        const table = document.getElementById('suggested_asns_table');
-        const asn_most_peers = await asn_most_peers_resp.json();
-        for (let row of asn_most_peers) {
-            const tr = document.createElement("tr");
-            for (let idx in row) {
-                const td = document.createElement("td");
-                const item = row[idx];
-                td.innerText = item;
-                if (idx == 0) {
-                    const addButton = document.createElement("button");
-                    addButton.addEventListener("click", () => {
-                        addAsn(item);
-                    });
-                    addButton.innerText = "Add";
-                    td.appendChild(addButton);
-                }
-                tr.appendChild(td);
-            }
-            table.appendChild(tr);
-        }
-    } else {
-        console.warn("Could not load suggested ASNs data:", asn_most_peers_resp.status, asn_most_peers_resp.statusText);
-    }
     const sampleQueriesContainer = document.getElementById("sample_queries");
     for (const [sampleQueryName, sampleQueryIPs] of _SAMPLE_QUERIES) {
         const li = document.createElement("li");
@@ -123,10 +97,7 @@ async function doInit() {
 {% import "macros.j2" as macros %}
 
 <div style="float: right">
-    <h3>Quick reference: largest ASes</h3>
-<table id="suggested_asns_table">
-<tr><th>ASN</th><th>Peer count</th></tr>
-</table>
+{{ macros.render_table(suggested_asns_table) }}
 </div>
 
 <form action="" method="get">

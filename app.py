@@ -2,8 +2,6 @@
 """Flask frontend to routegraph"""
 from dataclasses import dataclass
 import datetime
-import ipaddress
-import json
 import os
 import socket
 import sqlite3
@@ -105,15 +103,22 @@ def index(backend):
             heading_type='h3'
         )
 
+    suggested_asns = []
+    for asn, peercount in backend.get_suggested_asns():
+        suggested_asns.append((
+            _get_asn_link(asn) + _add_asn_button(asn),
+            peercount
+        ))
+    suggested_asns_table = Table(
+        'Quick reference: largest ASes',
+        ['ASN', 'Peer count'],
+        suggested_asns,
+        heading_type='h3'
+    )
+
     return flask.render_template(
         'routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update,
-        origin_asns_table=origin_asns_table)
-
-@app.route("/asn-most-peers.json")
-@wrap_get_backend
-def get_suggested_asns(backend):
-    data = backend.get_suggested_asns()
-    return json.dumps(data)
+        origin_asns_table=origin_asns_table, suggested_asns_table=suggested_asns_table)
 
 def _get_asn_link(asn):
     return f'<a href="/asn/{asn}">{asn}</a>'

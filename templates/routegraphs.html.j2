@@ -120,6 +120,7 @@ async function doInit() {
 <div class="container">
 
 <h2>Route Grapher</h2>
+{% import "macros.j2" as macros %}
 
 <div style="float: right">
     <h3>Quick reference: largest ASes</h3>
@@ -146,6 +147,10 @@ async function doInit() {
 {% if error %}
 <p class="info-error">Error: {{ error }}</p>
 {% else %}
+{% endif %}
+
+{% if origin_asns_table %}
+{{ macros.render_table(origin_asns_table) }}
 {% endif %}
 
 {% if graph_svg %}

@@ -2,12 +2,13 @@
 """Flask frontend to routegraph"""
 from dataclasses import dataclass
 import datetime
+import ipaddress
 import json
 import os
 import socket
 import sqlite3
 import traceback
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List
 
 import flask
 import networkx
@@ -30,6 +31,7 @@ class Table():
     data: List[Iterable[Any]]  # list of rows
     true_emoji: str = _EMOJI_TRUE
     false_emoji: str = _EMOJI_FALSE
+    heading_type: str = 'h2'
 
 def wrap_get_backend(f):
     """
@@ -46,7 +48,6 @@ def wrap_get_backend(f):
     newf.__name__ = f.__name__ + '_wrapped'
     return newf
 
-@wrap_get_backend
 def get_graph(backend):
     target_prefix = flask.request.args.get('ip_prefix')
 
@@ -63,14 +64,13 @@ def get_graph(backend):
     return dot.pipe(format='svg').decode('utf-8')
 
 @app.route("/")
-def index():
+@wrap_get_backend
+def index(backend):
     graph_svg = None
     error = None
     if flask.request.args.get('ip_prefix') and flask.request.args.getlist('asn'):
         try:
-            # false positive because of decorator adding backend param
-            # pylint: disable=no-value-for-parameter
-            graph_svg = get_graph()
+            graph_svg = get_graph(backend)
         except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
             error = str(e)
     try:
@@ -81,7 +81,33 @@ def index():
     except OSError as e:
         error = str(e)
         db_last_update = None
-    return flask.render_template('routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update)
+
+    def _add_asn_button(asn):
+        return f'<button onclick="addAsn({asn})">Add</button>'
+
+    origin_asns_table = None
+    if prefix := flask.request.args.get('ip_prefix'):
+        prefix_asns = []
+        try:
+            ipprefix = backend.get_most_specific_prefix(prefix)
+        except ValueError:
+            return f'Invalid CIDR {prefix}'
+        for asn in backend.dbconn.execute(
+                '''SELECT asn FROM PrefixOriginASNs
+                WHERE prefix_network == ? AND prefix_length == ?''',
+                (ipprefix.network_address.packed, ipprefix.prefixlen)):
+            prefix_asns.append((
+                _get_asn_link(asn) + _add_asn_button(asn),
+            ))
+        origin_asns_table = Table(f'Origin ASNs for {ipprefix}',
+            ['Origin ASNs'],
+            prefix_asns,
+            heading_type='h3'
+        )
+
+    return flask.render_template(
+        'routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update,
+        origin_asns_table=origin_asns_table)
 
 @app.route("/asn-most-peers.json")
 @wrap_get_backend
@@ -120,7 +146,10 @@ def get_asns(backend):
 @wrap_get_backend
 def get_asn_info(backend, asn):
     asn_prefixes = []
-    asn = int(asn)
+    try:
+        asn = int(asn)
+    except ValueError:
+        return f'Invalid ASN {asn}'
     as_name = backend.dbconn.execute(
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
     for row in backend.dbconn.execute(
@@ -131,7 +160,8 @@ def get_asn_info(backend, asn):
             socket.AF_INET6 if len(network_binary) == 16 else socket.AF_INET,
             network_binary)
         cidr = f'{network}/{prefix_length}'
-        asn_prefixes.append((cidr,))
+        cidr_link = f'<a href="/?ip_prefix={cidr}">{cidr}</a>'
+        asn_prefixes.append((cidr_link,))
 
     direct_feeds = set(backend.dbconn.execute(
         '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))

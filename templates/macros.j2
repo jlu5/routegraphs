@@ -1,0 +1,29 @@
+{% macro render_cell(table, cell) %}
+{% if cell is sameas True %}
+{{ table.true_emoji }}
+{% elif cell is sameas False %}
+{{ table.false_emoji }}
+{% else %}
+{{ cell }}
+{% endif %}
+{% endmacro %}
+
+{% macro render_table(table) %}
+<{{ table.heading_type }}>{{ table.name }}</{{ table.heading_type }}>
+<table>
+{% if table.headings %}
+<tr>
+{% for heading in table.headings %}
+<th>{{ render_cell(table, heading) }}</th>
+{% endfor %}
+</tr>
+{% endif %}
+{% for row in table.data %}
+<tr>
+{% for cell in row %}
+<td>{{ render_cell(table, cell) }}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</table>
+{% endmacro %}

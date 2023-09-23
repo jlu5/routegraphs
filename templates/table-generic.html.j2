@@ -10,37 +10,9 @@
 <p class="info-error">Error: {{ error }}</p>
 {% endif %}
 
-{% macro format_cell(table, cell) %}
-{% if cell is sameas True %}
-{{ table.true_emoji }}
-{% elif cell is sameas False %}
-{{ table.false_emoji }}
-{% else %}
-{{ cell }}
-{% endif %}
-{% endmacro %}
-
-{% macro render_table(table) %}
-<h2>{{ table.name }}</h2>
-<table>
-{% if table.headings %}
-    <tr>
-{% for heading in table.headings %}
-        <th>{{ format_cell(table, heading) }}</th>
-{% endfor %}
-    </tr>
-{% endif %}
-{% for row in table.data %}
-    <tr>
-{% for cell in row %}
-        <td>{{ format_cell(table, cell) }}</td>
-{% endfor %}
-    </tr>
-{% endfor %}
-</table>
-{% endmacro %}
+{% import "macros.j2" as macros %}
 {% for table in tables %}
-{{ render_table(table) }}
+{{ macros.render_table(table) }}
 {% endfor %}
 
 {# TODO: add this common bit

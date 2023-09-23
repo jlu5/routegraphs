@@ -4,7 +4,6 @@
 {% include "head.html.j2" %}
 
 <body onload="doInit()">
-
 <script>
 function delAsn(asn) {
     document.getElementById(`as_${asn}`).remove();
@@ -90,7 +89,8 @@ async function doInit() {
 </script>
 
 <div class="main">
-    <h1>highdef.network</h1>
+<h1>highdef.network</h1>
+{% include "nav.html.j2" %}
 <div class="container">
 
 <h2>Route Grapher</h2>

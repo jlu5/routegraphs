@@ -159,7 +159,7 @@ def get_asns(backend):
         page_title='All ASNs',
         tables=[
             Table('All Visible Networks',
-                  ['AS Number', 'AS Name', '# downstreams', 'Route server feed?'],
+                  ['AS Number', 'AS Name', 'Peer Count', 'Route server feed?'],
                   data, show_count=True)
         ])
 
@@ -210,13 +210,16 @@ def get_asn_info(backend, asn):
         asn_peers.append((_get_asn_link(peer_asn), peer_as_name, receives_transit, sends_transit))
 
     return flask.render_template(
-        'table-generic.html.j2',
+        'asns.html.j2',
         page_title=f'AS info for {asn}',
+        asn=asn,
+        as_name=as_name,
+        direct_feed=_EMOJI_TRUE if asn in direct_feeds else _EMOJI_FALSE,
         tables=[
-            Table(f'AS{asn} - {as_name} Prefixes',
+            Table(f'AS{asn} Prefixes',
                   ['Prefix'],
                   asn_prefixes, show_count=True),
-            Table(f'AS{asn} - {as_name} Peers',
+            Table(f'AS{asn} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
                   asn_peers, show_count=True)
         ])

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+{% include "head.html.j2" %}
+<body>
+<div class="main">
+<h1>highdef.network</h1>
+{% include "nav.html.j2" %}
+<div class="container">
+
+{% if as_name %}
+<h2>AS{{ asn }} - {{ as_name }}</h2>
+{% else %}
+<h2>AS{{ asn }}</h2>
+{% endif %}
+
+<p>Route server feed? {{ direct_feed }}</p>
+
+{% import "macros.j2" as macros %}
+{% for table in tables %}
+{{ macros.render_table(table) }}
+{% endfor %}
+
+</div> <!-- container -->
+</div> <!-- main -->
+</body>
+</html>

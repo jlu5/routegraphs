@@ -30,6 +30,7 @@ class Table():
     true_emoji: str = _EMOJI_TRUE
     false_emoji: str = _EMOJI_FALSE
     heading_type: str = 'h2'
+    show_count: bool = False
 
 def wrap_get_backend(f):
     """
@@ -128,6 +129,16 @@ def index(backend):
 def _get_asn_link(asn):
     return f'<a href="/asn/{asn}">{asn}</a>'
 
+def _get_prefix_link(prefix):
+    return f'<a href="/?ip_prefix={prefix}">{prefix}</a>'
+
+def _get_cidr(network_binary, prefix_length):
+    network = socket.inet_ntop(
+            socket.AF_INET6 if len(network_binary) == 16 else socket.AF_INET,
+            network_binary)
+    cidr = f'{network}/{prefix_length}'
+    return cidr
+
 @app.route("/asns")
 @wrap_get_backend
 def get_asns(backend):
@@ -149,7 +160,7 @@ def get_asns(backend):
         tables=[
             Table('All Visible Networks',
                   ['AS Number', 'AS Name', '# downstreams', 'Route server feed?'],
-                  data)
+                  data, show_count=True)
         ])
 
 @app.route("/asn/<asn>")
@@ -165,13 +176,8 @@ def get_asn_info(backend, asn):
     for row in backend.dbconn.execute(
         '''SELECT prefix_network, prefix_length FROM PrefixOriginASNs
         WHERE asn == ?;''', (asn,)):
-        network_binary, prefix_length = row
-        network = socket.inet_ntop(
-            socket.AF_INET6 if len(network_binary) == 16 else socket.AF_INET,
-            network_binary)
-        cidr = f'{network}/{prefix_length}'
-        cidr_link = f'<a href="/?ip_prefix={cidr}">{cidr}</a>'
-        asn_prefixes.append((cidr_link,))
+        cidr = _get_cidr(*row)
+        asn_prefixes.append((_get_prefix_link(cidr),))
 
     direct_feeds = set(backend.dbconn.execute(
         '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))
@@ -207,10 +213,30 @@ def get_asn_info(backend, asn):
         'table-generic.html.j2',
         page_title=f'AS info for {asn}',
         tables=[
-            Table(f'{asn} - {as_name} Prefixes',
+            Table(f'AS{asn} - {as_name} Prefixes',
                   ['Prefix'],
-                  asn_prefixes),
-            Table(f'{asn} - {as_name} Peers',
+                  asn_prefixes, show_count=True),
+            Table(f'AS{asn} - {as_name} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
-                  asn_peers)
+                  asn_peers, show_count=True)
+        ])
+
+@app.route("/prefixes")
+@wrap_get_backend
+def get_prefixes(backend):
+    prefixes = []
+    for row in backend.dbconn.execute(
+        '''SELECT prefix_network, prefix_length, asn FROM PrefixOriginASNs
+        ORDER BY prefix_network, prefix_length, asn ASC;'''):
+        network_binary, prefix_length, asn = row
+        cidr = _get_cidr(network_binary, prefix_length)
+        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn)))
+
+    return flask.render_template(
+        'table-generic.html.j2',
+        page_title='All Visible Prefixes',
+        tables=[
+            Table('All Visible Prefixes',
+                  ['Prefix', 'ASN'],
+                  prefixes, show_count=True)
         ])

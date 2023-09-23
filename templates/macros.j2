@@ -10,6 +10,9 @@
 
 {% macro render_table(table) %}
 <{{ table.heading_type }}>{{ table.name }}</{{ table.heading_type }}>
+{% if table.show_count%}
+<p>Total: {{ table.data | length }} items</p>
+{% endif %}
 <table>
 {% if table.headings %}
 <tr>

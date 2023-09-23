@@ -25,7 +25,7 @@ function addAsn(asn) {
     asnDiv.classList.add("asnView");
 
     let para = document.createElement("span");
-    para.innerText = asn;
+    para.innerHTML = `<a href="/asn/${asn}">${asn}</a>`;
     asnDiv.appendChild(para);
 
     let deleteBtn = document.createElement("button");

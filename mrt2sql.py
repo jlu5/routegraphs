@@ -5,6 +5,7 @@ import pathlib
 import re
 import socket
 import sqlite3
+import traceback
 
 import pybgpkit_parser
 
@@ -17,17 +18,38 @@ def db_init(db_filename):
     con.commit()
     return con
 
+def get_resource_name(registry_path: str, asn: int | None = None) -> str:
+    if asn:
+        path = pathlib.Path(registry_path) / 'data' / 'aut-num' / f'AS{asn}'
+        field = 'as-name'
+    try:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                m = re.match(fr'{field}:\s+(.*)', line)
+                if m:
+                    name = m.group(1)
+                    print(f'get_resource_name: AS{asn} -> {name}')
+                    return name
+    except OSError as e:
+        print(f"Error loading resource from {path}: {e}")
+        traceback.print_exc()
+    return ''
+
 # FIXME(clearnet support): this is not entirely correct
 # what does it mean to have multiple origin ASes but the rest of the path be the same?
 _AS_PATH_SEGMENT_RE = re.compile('\\{(\\d+)')
-def parse_mrt(mrt_filename, dbconn):
+def parse_mrt(mrt_filename, dbconn, registry_path=None):
     mrt_reader = pybgpkit_parser.Parser(mrt_filename, filters={'type': 'announce'})
+    as_names = {}
     for entry in mrt_reader:
         # Feed ASN
         feed_asn = entry['peer_asn']
-        dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1)", (feed_asn,))
+        if registry_path and feed_asn not in as_names:
+            as_names[feed_asn] = get_resource_name(registry_path, asn=feed_asn)
+        dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1, ?)", (feed_asn, as_names.get(feed_asn, '')))
 
-        network_address, prefix_length = entry['prefix'].split('/', 1)
+        prefix = entry['prefix']
+        network_address, prefix_length = prefix.split('/', 1)
         prefix_length = int(prefix_length)
         if ':' in network_address:
             ip_bits = 128
@@ -65,8 +87,10 @@ def parse_mrt(mrt_filename, dbconn):
 
         path_id = hash(as_path)
         for path_index, asn in enumerate(as_path):
+            if registry_path and asn not in as_names:
+                as_names[asn] = get_resource_name(registry_path, asn=asn)
             dbconn.execute(
-                "INSERT OR IGNORE INTO ASNs VALUES(?, 0)", (asn,)
+                "INSERT OR IGNORE INTO ASNs VALUES(?, 0, ?)", (asn, as_names.get(asn, ''))
             )
             dbconn.execute(
                 "INSERT OR IGNORE INTO Paths VALUES(?, ?, ?)",
@@ -98,12 +122,13 @@ def parse_mrt(mrt_filename, dbconn):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('db_filename', help='SQLite DB to write to')
+    parser.add_argument('-r', '--registry-path', help='path to dn42 registry')
     parser.add_argument('mrt_filenames', help='MRT dump filenames', nargs='+')
     args = parser.parse_args()
 
     db = db_init(args.db_filename)
     for filename in args.mrt_filenames:
-        parse_mrt(filename, db)
+        parse_mrt(filename, db, args.registry_path)
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,8 @@
 -- All seen ASNs
 CREATE TABLE "ASNs" (
   "asn" integer PRIMARY KEY,
-  "direct_feed" integer default 0
+  "direct_feed" integer default 0,
+  "name" text
 );
 
 -- All seen prefixes

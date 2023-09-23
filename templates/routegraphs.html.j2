@@ -115,11 +115,6 @@ async function doInit() {
 </form>
 <p>Backend: last updated {{ db_last_update }}</p>
 
-{% if error %}
-<p class="info-error">Error: {{ error }}</p>
-{% else %}
-{% endif %}
-
 {% if origin_asns_table %}
 {{ macros.render_table(origin_asns_table) }}
 {% endif %}

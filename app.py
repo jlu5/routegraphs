@@ -39,12 +39,18 @@ def wrap_get_backend(f):
         try:
             backend = routegraphs.RouteGraph(DB_FILENAME)
             return f(backend, *args, **kwargs)
+        except sqlite3.OperationalError:
+            traceback.print_exc()
+            return render_error('Failed to query DB')
         except (OSError, sqlite3.Error):
             traceback.print_exc()
-            return 'Failed to load DB'
+            return render_error('Failed to load DB')
     # Flask keeps track of the bound function name, which must be unique
     newf.__name__ = f.__name__ + '_wrapped'
     return newf
+
+def render_error(error_str=None):
+    return flask.render_template('error.html.j2', error=error_str)
 
 def get_graph(backend):
     target_prefix = flask.request.args.get('ip_prefix')
@@ -70,15 +76,14 @@ def index(backend):
         try:
             graph_svg = get_graph(backend)
         except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
-            error = str(e)
+            return render_error(e)
     try:
         # TODO: move this into a helper
         db_last_update = os.stat(DB_FILENAME).st_mtime
         dt = datetime.datetime.utcfromtimestamp(db_last_update)
         db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
     except OSError as e:
-        error = str(e)
-        db_last_update = None
+        return render_error(e)
 
     def _add_asn_button(asn):
         return f'<button onclick="addAsn({asn})">Add</button>'
@@ -89,7 +94,7 @@ def index(backend):
         try:
             ipprefix = backend.get_most_specific_prefix(prefix)
         except ValueError:
-            return f'Invalid CIDR {prefix}'
+            return render_error(f'Invalid CIDR {prefix}')
         for asn in backend.dbconn.execute(
                 '''SELECT asn FROM PrefixOriginASNs
                 WHERE prefix_network == ? AND prefix_length == ?''',
@@ -154,7 +159,7 @@ def get_asn_info(backend, asn):
     try:
         asn = int(asn)
     except ValueError:
-        return f'Invalid ASN {asn}'
+        return render_error(f'Invalid ASN {asn}')
     as_name = backend.dbconn.execute(
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
     for row in backend.dbconn.execute(

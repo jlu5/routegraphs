@@ -7,14 +7,11 @@
 {% include "nav.html.j2" %}
 <div class="container">
 
-{% import "macros.j2" as macros %}
-{% for table in tables %}
-{{ macros.render_table(table) }}
-{% endfor %}
+{% if error %}
+<p class="info-error">Error: {{ error | default("Unspecified error") }}</p>
+{% endif %}
 
-{# TODO: add this common bit
-<p>Backend: last updated {{ db_last_update }}</p>
-#}
+<button onclick="history.back()">Go Back</button>
 
 </div> <!-- container -->
 </div> <!-- main -->

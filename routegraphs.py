@@ -4,7 +4,6 @@
 import argparse
 import collections
 from dataclasses import dataclass, field
-import enum
 import ipaddress
 import sqlite3
 
@@ -116,7 +115,13 @@ class RouteGraph():
 
     def get_suggested_asns(self, limit=10):
         return self.dbconn.execute(
-            '''SELECT receiver_asn, COUNT(sender_asn) FROM NeighbourASNs GROUP BY receiver_asn ORDER BY COUNT(sender_asn) DESC LIMIT 10;''').fetchall()
+            f'''SELECT local_asn, COUNT(peer_asn) FROM
+        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
+        FROM NeighbourASNs UNION
+        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
+        FROM NeighbourASNs)
+        GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC
+        LIMIT {int(limit)}''').fetchall()
 
     @staticmethod
     def graph_result(source_asns, result):

@@ -53,6 +53,10 @@ def wrap_get_backend(f):
 def render_error(error_str=None):
     return flask.render_template('error.html.j2', error=error_str)
 
+@app.route('/static/<path:path>')
+def render_static(path):
+    return flask.send_from_directory('static', path)
+
 def get_graph(backend):
     target_prefix = flask.request.args.get('ip_prefix')
 

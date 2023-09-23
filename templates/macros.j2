@@ -13,7 +13,7 @@
 {% if table.show_count%}
 <p>Total: {{ table.data | length }} items</p>
 {% endif %}
-<table>
+<table class="sortable">
 {% if table.headings %}
 <tr>
 {% for heading in table.headings %}

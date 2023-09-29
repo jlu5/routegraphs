@@ -242,18 +242,21 @@ def get_asn_info(backend, asn):
 def get_prefixes(backend):
     prefixes = []
     for row in backend.dbconn.execute(
-        '''SELECT prefix_network, prefix_length, asn FROM PrefixOriginASNs
-        ORDER BY prefix_network, prefix_length, asn ASC;'''):
-        network_binary, prefix_length, asn = row
+        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(p2.asn) FROM PrefixOriginASNs p1
+        INNER JOIN PrefixOriginASNs p2
+        ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
+        GROUP BY p1.prefix_network, p1.prefix_length, p1.asn
+        ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;'''):
+        network_binary, prefix_length, asn, n_origin_asns = row
         cidr = _get_cidr(network_binary, prefix_length)
-        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn)))
+        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All Visible Prefixes',
         tables=[
             Table('All Visible Prefixes',
-                  ['Prefix', 'ASN'],
+                  ['Prefix', 'ASN', '# Origin ASNs'],
                   prefixes, show_count=True)
         ],
         db_last_update=_get_last_update())

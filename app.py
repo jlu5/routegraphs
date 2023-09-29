@@ -40,7 +40,7 @@ def wrap_get_backend(f):
         try:
             backend = routegraphs.RouteGraph(DB_FILENAME)
             return f(backend, *args, **kwargs)
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, sqlite3.ProgrammingError):
             traceback.print_exc()
             return render_error('Failed to query DB')
         except (OSError, sqlite3.Error):
@@ -182,10 +182,14 @@ def get_asn_info(backend, asn):
     as_name = backend.dbconn.execute(
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
     for row in backend.dbconn.execute(
-        '''SELECT prefix_network, prefix_length FROM PrefixOriginASNs
-        WHERE asn == ?;''', (asn,)):
-        cidr = _get_cidr(*row)
-        asn_prefixes.append((_get_prefix_link(cidr),))
+        '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn)
+        FROM PrefixOriginASNs p1
+        INNER JOIN PrefixOriginASNs p2
+        ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
+        WHERE p1.asn == ?
+        GROUP BY p1.prefix_network, p1.prefix_length;''', (asn,)):
+        cidr = _get_cidr(row[0], row[1])
+        asn_prefixes.append((_get_prefix_link(cidr), row[2]))
 
     direct_feeds = set(backend.dbconn.execute(
         '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))
@@ -225,7 +229,7 @@ def get_asn_info(backend, asn):
         direct_feed=_EMOJI_TRUE if asn in direct_feeds else _EMOJI_FALSE,
         tables=[
             Table(f'AS{asn} Prefixes',
-                  ['Prefix'],
+                  ['Prefix', '# Origin ASNs'],
                   asn_prefixes, show_count=True),
             Table(f'AS{asn} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],

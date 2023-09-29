@@ -31,7 +31,6 @@
     <select name="asn" id="asn_list" multiple hidden></select>
     <input type="submit" onclick="addAsnListener()" value="Graph!">
 </form>
-<p>Backend: last updated {{ db_last_update }}</p>
 
 {% if origin_asns_table %}
 {{ macros.render_table(origin_asns_table) }}
@@ -55,6 +54,7 @@
 <li><span style="border: grey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
 </ul>
 </div> <!-- container -->
+{% include "footer.html.j2" %}
 </div> <!-- main -->
 </body>
 </html>

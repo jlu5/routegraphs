@@ -72,6 +72,16 @@ def get_graph(backend):
     dot = backend.graph_result(asns, routegraph_data)
     return dot.pipe(format='svg').decode('utf-8')
 
+def _get_last_update():
+    try:
+        db_last_update = os.stat(DB_FILENAME).st_mtime
+        dt = datetime.datetime.utcfromtimestamp(db_last_update)
+        db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        return db_last_update
+    except OSError:
+        traceback.print_exc()
+        return None
+
 @app.route("/")
 @wrap_get_backend
 def index(backend):
@@ -82,13 +92,6 @@ def index(backend):
             graph_svg = get_graph(backend)
         except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
             return render_error(e)
-    try:
-        # TODO: move this into a helper
-        db_last_update = os.stat(DB_FILENAME).st_mtime
-        dt = datetime.datetime.utcfromtimestamp(db_last_update)
-        db_last_update = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
-    except OSError as e:
-        return render_error(e)
 
     def _add_asn_button(asn):
         return f'<button onclick="addAsn({asn})">Add</button>'
@@ -127,7 +130,7 @@ def index(backend):
     )
 
     return flask.render_template(
-        'routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=db_last_update,
+        'routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=_get_last_update(),
         origin_asns_table=origin_asns_table, suggested_asns_table=suggested_asns_table)
 
 def _get_asn_link(asn):
@@ -165,7 +168,8 @@ def get_asns(backend):
             Table('All Visible Networks',
                   ['AS Number', 'AS Name', 'Peer Count', 'Route server feed?'],
                   data, show_count=True)
-        ])
+        ],
+        db_last_update=_get_last_update())
 
 @app.route("/asn/<asn>")
 @wrap_get_backend
@@ -226,7 +230,8 @@ def get_asn_info(backend, asn):
             Table(f'AS{asn} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
                   asn_peers, show_count=True)
-        ])
+        ],
+        db_last_update=_get_last_update())
 
 @app.route("/prefixes")
 @wrap_get_backend
@@ -246,4 +251,5 @@ def get_prefixes(backend):
             Table('All Visible Prefixes',
                   ['Prefix', 'ASN'],
                   prefixes, show_count=True)
-        ])
+        ],
+        db_last_update=_get_last_update())

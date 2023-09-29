@@ -4,6 +4,7 @@
 import argparse
 import collections
 from dataclasses import dataclass, field
+import html
 import ipaddress
 import sqlite3
 
@@ -28,9 +29,11 @@ class RouteGraph():
 
     @staticmethod
     def _row_factory(_cursor, row):
+        """Custom sqlite3 row factory to flatten single-item queries and escape text outputs"""
+        new_row = (html.escape(item) if isinstance(item, str) else item for item in row)
         if len(row) == 1:
-            return row[0]
-        return row
+            return next(new_row)
+        return tuple(new_row)
 
     def get_path(self, path_id, start_index=0):
         query = self.dbconn.execute(

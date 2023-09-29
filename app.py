@@ -151,22 +151,28 @@ def _get_cidr(network_binary, prefix_length):
 def get_asns(backend):
     data = []
     for row in backend.dbconn.execute(
-        '''SELECT local_asn, name, COUNT(peer_asn), direct_feed FROM
-        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
-        FROM NeighbourASNs UNION
-        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
-        FROM NeighbourASNs)
-        INNER JOIN ASNs on ASNs.asn = local_asn
-        GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC;'''):
-        asn, name, n_upstreams, direct_feed = row
+        '''SELECT local_asn, name, n_peers, COUNT(prefix_network), direct_feed FROM (
+            SELECT local_asn, COUNT(peer_asn) AS n_peers FROM (
+                SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
+                FROM NeighbourASNs UNION
+                SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
+                FROM NeighbourASNs
+            )
+            GROUP BY local_asn
+        )
+        LEFT JOIN PrefixOriginASNs poa ON poa.asn == local_asn
+        LEFT JOIN ASNs ON ASNs.asn = local_asn
+        GROUP BY local_asn
+        ;'''):
+        asn, name, n_peers, n_prefixes, direct_feed = row
         direct_feed = bool(direct_feed)
-        data.append((_get_asn_link(asn), name, n_upstreams, direct_feed))
+        data.append((_get_asn_link(asn), name, n_peers, n_prefixes, direct_feed))
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All ASNs',
         tables=[
             Table('All Visible Networks',
-                  ['AS Number', 'AS Name', 'Peer Count', 'Route server feed?'],
+                  ['AS Number', 'AS Name', '# Peers', '# Prefixes', 'Route server feed?'],
                   data, show_count=True)
         ],
         db_last_update=_get_last_update())

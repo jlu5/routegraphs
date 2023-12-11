@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Export BGP routes info from MRT dumps into a SQLite DB for easier querying."""
 import argparse
+import itertools
 import pathlib
 import re
 import socket
 import sqlite3
 
 import pybgpkit_parser
+from dn42regparse import get_as_name, get_fields
 
 _DB_INIT_SCRIPT = pathlib.Path(__file__).parent / 'dbinit.sql'
 def db_init(db_filename):
@@ -17,25 +19,7 @@ def db_init(db_filename):
     con.commit()
     return con
 
-def get_resource_name(registry_path: str, asn: int | None = None) -> str:
-    if asn:
-        path = pathlib.Path(registry_path) / 'data' / 'aut-num' / f'AS{asn}'
-        field = 'as-name'
-    else:
-        raise ValueError("Invalid query type")
-    try:
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                m = re.match(fr'{field}:\s+(.*)', line)
-                if m:
-                    name = m.group(1)
-                    print(f'get_resource_name: AS{asn} -> {name}')
-                    return name
-    except OSError as e:
-        print(f"get_resource_name ERROR: {path}: {e}")
-    return ''
-
-def _unpack_cidr(prefix: str) -> (bytes, int, bytes):
+def unpack_cidr(prefix: str) -> (bytes, int, bytes):
     """Unpack a CIDR prefix string into binary network address, prefix length, and binary broadcast address"""
     network_address, prefix_length = prefix.split('/', 1)
     prefix_length = int(prefix_length)
@@ -63,11 +47,11 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
         # Feed ASN
         feed_asn = entry['peer_asn']
         if registry_path and feed_asn not in as_names:
-            as_names[feed_asn] = get_resource_name(registry_path, asn=feed_asn)
+            as_names[feed_asn] = get_as_name(registry_path, feed_asn)
         dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1, ?)", (feed_asn, as_names.get(feed_asn, '')))
 
         prefix = entry['prefix']
-        unpacked_cidr = _unpack_cidr(prefix)
+        unpacked_cidr = unpack_cidr(prefix)
         network_address_packed, prefix_length, _ = unpacked_cidr
         dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)", unpacked_cidr)
 
@@ -93,7 +77,7 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
         path_id = hash(as_path)
         for path_index, asn in enumerate(as_path):
             if registry_path and asn not in as_names:
-                as_names[asn] = get_resource_name(registry_path, asn=asn)
+                as_names[asn] = get_as_name(registry_path, asn)
             dbconn.execute(
                 "INSERT OR IGNORE INTO ASNs VALUES(?, 0, ?)", (asn, as_names.get(asn, ''))
             )
@@ -124,6 +108,31 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
         )
     dbconn.commit()
 
+# XXX hardcoded
+_DEFAULT_V4_MAX_LENGTH = 29
+_DEFAULT_V6_MAX_LENGTH = 64
+def parse_roa(dbconn, registry_root):
+    path4 = pathlib.Path(registry_root) / 'data' / 'route'
+    path6 = pathlib.Path(registry_root) / 'data' / 'route6'
+    for roa_file in itertools.chain(path4.iterdir(), path6.iterdir()):
+        cidr = roa_file.name.replace('_', '/')
+        network_address_packed, prefix_length, broadcast_address_packed = unpack_cidr(cidr)
+        roa_fields = get_fields(roa_file)
+
+        asns = roa_fields['origin'].split()
+        for asn_entry in asns:
+            # Chop off the "AS" part of each AS reference
+            asn = int(asn_entry[2:])
+
+            # Default ROA length if not specified is /29 or the length of the prefix, whichever is larger
+            default_max_length = _DEFAULT_V6_MAX_LENGTH if ':' in cidr else _DEFAULT_V4_MAX_LENGTH
+            max_length = int(roa_fields.get('max-length', default_max_length))
+            max_length = max(prefix_length, max_length)
+            dbconn.execute(
+                "INSERT OR IGNORE INTO ROAEntries VALUES(?, ?, ?, ?, ?)",
+                (network_address_packed, prefix_length, broadcast_address_packed, asn, max_length)
+            )
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('db_filename', help='SQLite DB to write to')
@@ -135,7 +144,13 @@ def main():
         print('WARNING: dn42 registry path not specified, AS names will be missing')
 
     db = db_init(args.db_filename)
+
+    if args.registry_path:
+        print(f'Reading ROA entries from {args.registry_path}')
+        parse_roa(db, args.registry_path)
+
     for filename in args.mrt_filenames:
+        print(f'Reading MRT dump {filename}')
         parse_mrt(filename, db, args.registry_path)
 
 if __name__ == '__main__':

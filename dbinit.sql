@@ -13,6 +13,16 @@ CREATE TABLE "Prefixes" (
   PRIMARY KEY("network", "length")
 );
 
+-- All ROA records
+CREATE TABLE "ROAEntries" (
+  "network" varbinary(16),
+  "length" integer, -- length of the prefix
+  "broadcast_address" varbinary(16),
+  "asn" integer,
+  "max_length" integer, -- max length of more specifics
+  PRIMARY KEY("network", "length", "asn")
+);
+
 -- Prefix <-> origin ASN mapping
 CREATE TABLE "PrefixOriginASNs" (
   "asn" integer,

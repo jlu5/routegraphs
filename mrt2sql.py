@@ -35,6 +35,24 @@ def get_resource_name(registry_path: str, asn: int | None = None) -> str:
         print(f"get_resource_name ERROR: {path}: {e}")
     return ''
 
+def _unpack_cidr(prefix: str) -> (bytes, int, bytes):
+    """Unpack a CIDR prefix string into binary network address, prefix length, and binary broadcast address"""
+    network_address, prefix_length = prefix.split('/', 1)
+    prefix_length = int(prefix_length)
+    if ':' in network_address:
+        ip_bits = 128
+        socket_family = socket.AF_INET6
+    else:
+        ip_bits = 32
+        socket_family = socket.AF_INET
+
+    # This used to use the Python ipaddress module, but that is much slower
+    network_address_packed = socket.inet_pton(socket_family, network_address)
+    broadcast_mask = (1<<(ip_bits-prefix_length))-1
+    broadcast_address = int.from_bytes(network_address_packed, 'big') | broadcast_mask
+    broadcast_address_packed = broadcast_address.to_bytes(ip_bits//8, 'big')
+    return (network_address_packed, prefix_length, broadcast_address_packed)
+
 # FIXME(clearnet support): this is not entirely correct
 # what does it mean to have multiple origin ASes but the rest of the path be the same?
 _AS_PATH_SEGMENT_RE = re.compile('\\{(\\d+)')
@@ -49,22 +67,9 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
         dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1, ?)", (feed_asn, as_names.get(feed_asn, '')))
 
         prefix = entry['prefix']
-        network_address, prefix_length = prefix.split('/', 1)
-        prefix_length = int(prefix_length)
-        if ':' in network_address:
-            ip_bits = 128
-            socket_family = socket.AF_INET6
-        else:
-            ip_bits = 32
-            socket_family = socket.AF_INET
-
-        # This part used to use the Python ipaddress module, but that is much slower than doing a bit of math ourselves
-        network_address_packed = socket.inet_pton(socket_family, network_address)
-        broadcast_mask = (1<<(ip_bits-prefix_length))-1
-        broadcast_address = int.from_bytes(network_address_packed, 'big') | broadcast_mask
-        broadcast_address_packed = broadcast_address.to_bytes(ip_bits//8, 'big')
-        dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)",
-            (network_address_packed, prefix_length, broadcast_address_packed))
+        unpacked_cidr = _unpack_cidr(prefix)
+        network_address_packed, prefix_length, _ = unpacked_cidr
+        dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)", unpacked_cidr)
 
         as_path = entry['as_path'].split()
         as_path_parts = []

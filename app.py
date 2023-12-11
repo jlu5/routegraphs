@@ -163,6 +163,7 @@ def get_asns(backend):
         LEFT JOIN PrefixOriginASNs poa ON poa.asn == local_asn
         LEFT JOIN ASNs ON ASNs.asn = local_asn
         GROUP BY local_asn
+        ORDER BY n_peers DESC
         ;'''):
         asn, name, n_peers, n_prefixes, direct_feed = row
         direct_feed = bool(direct_feed)

@@ -5,7 +5,6 @@ import pathlib
 import re
 import socket
 import sqlite3
-import traceback
 
 import pybgpkit_parser
 
@@ -22,6 +21,8 @@ def get_resource_name(registry_path: str, asn: int | None = None) -> str:
     if asn:
         path = pathlib.Path(registry_path) / 'data' / 'aut-num' / f'AS{asn}'
         field = 'as-name'
+    else:
+        raise ValueError("Invalid query type")
     try:
         with open(path, encoding='utf-8') as f:
             for line in f:
@@ -31,8 +32,7 @@ def get_resource_name(registry_path: str, asn: int | None = None) -> str:
                     print(f'get_resource_name: AS{asn} -> {name}')
                     return name
     except OSError as e:
-        print(f"Error loading resource from {path}: {e}")
-        traceback.print_exc()
+        print(f"get_resource_name ERROR: {path}: {e}")
     return ''
 
 # FIXME(clearnet support): this is not entirely correct
@@ -125,6 +125,9 @@ def main():
     parser.add_argument('-r', '--registry-path', help='path to dn42 registry')
     parser.add_argument('mrt_filenames', help='MRT dump filenames', nargs='+')
     args = parser.parse_args()
+
+    if not args.registry_path:
+        print('WARNING: dn42 registry path not specified, AS names will be missing')
 
     db = db_init(args.db_filename)
     for filename in args.mrt_filenames:

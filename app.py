@@ -146,6 +146,9 @@ def _get_cidr(network_binary, prefix_length):
     cidr = f'{network}/{prefix_length}'
     return cidr
 
+def _format_asn_name(asn, name):
+    return name or f'&lt;Unknown AS {asn}&gt;'
+
 @app.route("/asns")
 @wrap_get_backend
 def get_asns(backend):
@@ -165,9 +168,10 @@ def get_asns(backend):
         GROUP BY local_asn
         ORDER BY n_peers DESC
         ;'''):
-        asn, name, n_peers, n_prefixes, direct_feed = row
+        asn, as_name, n_peers, n_prefixes, direct_feed = row
         direct_feed = bool(direct_feed)
-        data.append((_get_asn_link(asn), name, n_peers, n_prefixes, direct_feed))
+        as_name = _format_asn_name(asn, as_name)
+        data.append((_get_asn_link(asn), as_name, n_peers, n_prefixes, direct_feed))
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All ASNs',
@@ -188,6 +192,7 @@ def get_asn_info(backend, asn):
         return render_error(f'Invalid ASN {asn}')
     as_name = backend.dbconn.execute(
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
+    as_name = _format_asn_name(asn, as_name)
     for row in backend.dbconn.execute(
         '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn)
         FROM PrefixOriginASNs p1
@@ -212,6 +217,7 @@ def get_asn_info(backend, asn):
         WHERE local_asn = ? AND peer_asn <> local_asn
         GROUP BY peer_asn''', (asn,)):
         peer_asn, peer_as_name, receives_transit, sends_transit = row
+        peer_as_name = _format_asn_name(asn, peer_as_name)
         # We only know for sure whether an ASN receives transit if they are a direct feed...
         if sends_transit:
             sends_transit = _EMOJI_TRUE

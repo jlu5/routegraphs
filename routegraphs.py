@@ -126,24 +126,35 @@ class RouteGraph():
         GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC
         LIMIT {int(limit)}''').fetchall()
 
-    @staticmethod
-    def graph_result(source_asns, result):
+    def graph_result(self, source_asns, result):
         dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
             node_attr={'penwidth': '1.5', 'margin': '0.02'})
         dot.attr(rankdir='LR')
-        seen_edges = set()
 
         # This used a named node to avoid https://github.com/xflr6/graphviz/issues/53
         dot.node('dest_prefix', label=str(result.prefix), color='green')
 
+        seen_edges = set()
         def _add_edge(n1, n2, **kwargs):
             if (n1, n2) not in seen_edges:
                 dot.edge(n1, n2, **kwargs)
                 seen_edges.add((n1, n2))
 
-        # with dot.subgraph(name='cluster source ASes') as subgraph:
+        seen_asns = set()
+        def _add_asn(asn, **kwargs):
+            if asn not in seen_asns:
+                seen_asns.add(asn)
+                # Add the AS name to the graph if applicable
+                as_name = self.dbconn.execute('''SELECT name FROM ASNs where asn == ?''', (asn,)).fetchone()
+                as_node_name = f'AS{asn}'
+                if as_name:
+                    as_label = f'{as_node_name}\n{as_name}'
+                else:
+                    as_label = as_node_name
+                dot.node(as_node_name, label=as_label, **kwargs)
+
         for asn in source_asns:
-            dot.node(f'AS{asn}', color='blue')
+            _add_asn(asn, color='blue')
 
         for path in result.paths:
             assert path, "Got an empty path?"
@@ -156,6 +167,7 @@ class RouteGraph():
                         attrs = {'style': 'dashed', 'color': 'grey'}
                     elif previous_asn == current_asn:
                         continue
+                    _add_asn(current_asn)
                     _add_edge(f'AS{previous_asn}', f'AS{current_asn}', **attrs)
 
             _add_edge(f'AS{current_asn}', 'dest_prefix')

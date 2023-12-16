@@ -12,6 +12,7 @@ import flask
 import networkx
 
 import routegraphs
+import roacheck
 
 app = flask.Flask(__name__)
 
@@ -107,11 +108,13 @@ def index(backend):
                 '''SELECT asn FROM PrefixOriginASNs
                 WHERE prefix_network == ? AND prefix_length == ?''',
                 (ipprefix.network_address.packed, ipprefix.prefixlen)):
+            roa_entries = roacheck.check_roa(backend.dbconn, str(ipprefix), asn)
             prefix_asns.append((
                 _get_asn_link(asn) + _add_asn_button(asn),
+                bool(roa_entries)
             ))
         origin_asns_table = Table(f'Origin ASNs for {ipprefix}',
-            ['Origin ASNs'],
+            ['Origin ASNs', 'ROA valid?'],
             prefix_asns,
             heading_type='h3'
         )
@@ -201,7 +204,8 @@ def get_asn_info(backend, asn):
         WHERE p1.asn == ?
         GROUP BY p1.prefix_network, p1.prefix_length;''', (asn,)):
         cidr = _get_cidr(row[0], row[1])
-        asn_prefixes.append((_get_prefix_link(cidr), row[2]))
+        roa_entries = roacheck.check_roa(backend.dbconn, cidr, asn)
+        asn_prefixes.append((_get_prefix_link(cidr), bool(roa_entries), row[2]))
 
     direct_feeds = set(backend.dbconn.execute(
         '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))
@@ -242,7 +246,7 @@ def get_asn_info(backend, asn):
         direct_feed=_EMOJI_TRUE if asn in direct_feeds else _EMOJI_FALSE,
         tables=[
             Table(f'AS{asn} Prefixes',
-                  ['Prefix', '# Origin ASNs'],
+                  ['Prefix', 'ROA valid?', '# Origin ASNs'],
                   asn_prefixes, show_count=True),
             Table(f'AS{asn} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],

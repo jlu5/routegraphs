@@ -42,7 +42,7 @@ class RouteGraph():
         path = query.fetchall()
         return tuple(path)
 
-    def get_most_specific_prefix(self, prefix_or_ip):
+    def get_most_specific_prefix(self, prefix_or_ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
         ipn = ipaddress.ip_network(prefix_or_ip, strict=False)
         if ipn.num_addresses == 1:
             ip = ipn.network_address

@@ -10,6 +10,8 @@ if [[ -z "$NODOWNLOAD" ]]; then
         wget --no-check-certificate "https://mrt.collector.dn42/$mrtfile.bz2"
         bunzip2 "$mrtfile.bz2"
     done
+    wget "https://dn42.burble.com/roa/dn42_roa_46.json" -O dn42_roa_46.json.new
+    mv dn42_roa_46.json.new dn42_roa_46.json
 fi
 
 DB_OUT="dn42.db"

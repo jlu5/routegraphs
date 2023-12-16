@@ -50,7 +50,10 @@ options:
 
 ### Flask Web UI
 
-The Flask web frontend provides interactive queries for routegraph. It loads the database from the path specified in the `ROUTEGRAPHS_DB` environment variable, which must be set.
+The Flask web frontend provides interactive queries for routegraph. The frontend loads its configuration via environment variables:
+
+- `ROUTEGRAPHS_DB` **(required)**: path to SQLite database
+- `ROUTEGRAPHS_BASE_URL`: base URL to the site, for creating links inside graphs
 
 #### Development server
 

@@ -19,6 +19,7 @@ app = flask.Flask(__name__)
 DB_FILENAME = os.environ.get('ROUTEGRAPHS_DB')
 if not DB_FILENAME:
     raise ValueError("Must specify ROUTEGRAPHS_DB environment variable")
+BASE_URL = os.environ.get('ROUTEGRAPHS_BASE_URL')
 
 _EMOJI_TRUE = '✅'
 _EMOJI_FALSE = '❌'
@@ -70,7 +71,9 @@ def get_graph(backend):
         raise ValueError(f'Invalid ASN in request: {asns!r}') from e
 
     routegraph_data = backend.asns_paths_to_prefix(target_prefix.strip(), asns)
-    base_url = None if flask.request.args.get('hide_graph_links') else flask.request.base_url
+    base_url = None
+    if not flask.request.args.get('hide_graph_links'):
+        base_url = BASE_URL or flask.request.base_url
     dot = backend.graph_result(asns, routegraph_data, base_url=base_url)
     return dot.pipe(format='svg').decode('utf-8')
 

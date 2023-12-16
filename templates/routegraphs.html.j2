@@ -29,6 +29,8 @@
 
     <select name="asn" id="asn_list" multiple hidden></select>
     <input type="submit" onclick="addAsnListener()" value="Graph!">
+    <input type="checkbox" id="hide_graph_links" name="hide_graph_links" value="1">
+    <label for="hide_graph_links">Hide links in graph</label>
 </form>
 
 {% if origin_asns_table %}

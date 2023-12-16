@@ -60,6 +60,7 @@ const _SAMPLE_QUERIES = [
 async function doInit() {
     let searchParams = new URL(document.location).searchParams;
     document.getElementById("ip_prefix").value = searchParams.get("ip_prefix");
+    document.getElementById("hide_graph_links").checked = !!searchParams.get("hide_graph_links");
     searchParams.getAll("asn").forEach(addAsn);
 
     const sampleQueriesContainer = document.getElementById("sample_queries");

@@ -70,7 +70,8 @@ def get_graph(backend):
         raise ValueError(f'Invalid ASN in request: {asns!r}') from e
 
     routegraph_data = backend.asns_paths_to_prefix(target_prefix.strip(), asns)
-    dot = backend.graph_result(asns, routegraph_data)
+    base_url = None if flask.request.args.get('hide_graph_links') else flask.request.base_url
+    dot = backend.graph_result(asns, routegraph_data, base_url=base_url)
     return dot.pipe(format='svg').decode('utf-8')
 
 def _get_last_update():

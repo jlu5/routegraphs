@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import html
 import ipaddress
 import sqlite3
+from typing import List
+import urllib.parse
 
 import graphviz
 import networkx
@@ -126,13 +128,17 @@ class RouteGraph():
         GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC
         LIMIT {int(limit)}''').fetchall()
 
-    def graph_result(self, source_asns, result):
+    def graph_result(self, source_asns: List[int], result: PathsToPrefixResult, base_url=None):
         dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
             node_attr={'penwidth': '1.5', 'margin': '0.02'})
         dot.attr(rankdir='LR')
 
         # This used a named node to avoid https://github.com/xflr6/graphviz/issues/53
-        dot.node('dest_prefix', label=str(result.prefix), color='green')
+        if base_url:
+            dest_prefix_url = urllib.parse.urljoin(base_url, f'?ip_prefix={result.prefix}')
+        else:
+            dest_prefix_url = None
+        dot.node('dest_prefix', label=str(result.prefix), color='green', URL=dest_prefix_url)
 
         seen_edges = set()
         def _add_edge(n1, n2, **kwargs):
@@ -151,6 +157,8 @@ class RouteGraph():
                     as_label = f'{as_node_name}\n{as_name}'
                 else:
                     as_label = as_node_name
+                if base_url:
+                    kwargs['URL'] = urllib.parse.urljoin(base_url, f'asn/{asn}')
                 dot.node(as_node_name, label=as_label, **kwargs)
 
         for asn in source_asns:

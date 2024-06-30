@@ -263,21 +263,25 @@ def get_asn_info(backend, asn):
 def get_prefixes(backend):
     prefixes = []
     for row in backend.dbconn.execute(
-        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(p2.asn) FROM PrefixOriginASNs p1
+        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(DISTINCT p2.asn), COUNT(roa.network)
+        FROM PrefixOriginASNs p1
         INNER JOIN PrefixOriginASNs p2
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
+        LEFT JOIN ROAEntries roa
+        ON p1.asn = roa.asn and p1.prefix_network >= roa.network and p1.prefix_length <= roa.max_length
         GROUP BY p1.prefix_network, p1.prefix_length, p1.asn
-        ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;'''):
-        network_binary, prefix_length, asn, n_origin_asns = row
+        ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;
+        '''):
+        network_binary, prefix_length, asn, n_origin_asns, roa_matches = row
         cidr = _get_cidr(network_binary, prefix_length)
-        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns))
+        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches)))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All Visible Prefixes',
         tables=[
             Table('All Visible Prefixes',
-                  ['Prefix', 'ASN', '# Origin ASNs'],
+                  ['Prefix', 'ASN', '# Origin ASNs', 'ROA valid?'],
                   prefixes, show_count=True)
         ],
         db_last_update=_get_last_update())

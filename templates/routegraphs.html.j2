@@ -37,6 +37,10 @@
 {{ macros.render_table(origin_asns_table) }}
 {% endif %}
 
+{% if roa_entries_table %}
+{{ macros.render_table(roa_entries_table) }}
+{% endif %}
+
 {% if graph_svg %}
 <br>
 {{ graph_svg }}

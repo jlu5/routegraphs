@@ -87,6 +87,14 @@ def _get_last_update():
         traceback.print_exc()
         return None
 
+def _get_explorer_link(objtype, resource):
+    normalized_resource = resource.replace('/', '_')
+    return f'<a href="https://explorer.dn42.dev/#/{objtype}/{normalized_resource}">{resource}</a>'
+
+def _get_roa_link(cidr):
+    objtype = 'route6' if ':' in cidr else 'route'
+    return _get_explorer_link(objtype, cidr)
+
 @app.route("/")
 @wrap_get_backend
 def index(backend):
@@ -102,6 +110,7 @@ def index(backend):
         return f'<button onclick="addAsn({asn})">Add</button>'
 
     origin_asns_table = None
+    roa_entries_table = None
     if prefix := flask.request.args.get('ip_prefix'):
         prefix_asns = []
         try:
@@ -122,6 +131,21 @@ def index(backend):
             prefix_asns,
             heading_type='h3'
         )
+        # All ROA entries matching this prefix
+        roa_entries = []
+        for row in backend.dbconn.execute(
+                '''SELECT network, length, asn, max_length FROM ROAEntries
+                WHERE network <= ? AND broadcast_address >= ? AND length <= ?''',
+                (ipprefix.network_address.packed, ipprefix.broadcast_address.packed, ipprefix.prefixlen)):
+            roa_cidr = _get_cidr(row[0], row[1])
+            roa_entries.append(
+                (_get_roa_link(roa_cidr), _get_asn_link(row[2]), row[3])
+            )
+        roa_entries_table = Table(f'Known ROA entries for {ipprefix}',
+            ['ROA entry', 'ASN', 'Max allowed length'],
+            roa_entries,
+            heading_type='h3'
+        )
 
     suggested_asns = []
     for asn, peercount in backend.get_suggested_asns():
@@ -138,7 +162,8 @@ def index(backend):
 
     return flask.render_template(
         'routegraphs.html.j2', graph_svg=graph_svg, error=error, db_last_update=_get_last_update(),
-        origin_asns_table=origin_asns_table, suggested_asns_table=suggested_asns_table)
+        origin_asns_table=origin_asns_table, suggested_asns_table=suggested_asns_table,
+        roa_entries_table=roa_entries_table)
 
 def _get_asn_link(asn):
     return f'<a href="/asn/{asn}">{asn}</a>'

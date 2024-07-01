@@ -310,3 +310,29 @@ def get_prefixes(backend):
                   prefixes, show_count=True)
         ],
         db_last_update=_get_last_update())
+
+@app.route("/roa-alerts")
+@wrap_get_backend
+def get_roa_alerts(backend):
+    roa_alerts = []
+    for row in backend.dbconn.execute(
+        '''SELECT p.prefix_network, p.prefix_length, p.asn
+        FROM PrefixOriginASNs p
+        LEFT JOIN ROAEntries roa
+        ON p.asn = roa.asn and p.prefix_network >= roa.network and p.prefix_length <= roa.max_length
+        GROUP BY p.prefix_network, p.prefix_length, p.asn
+        HAVING COUNT(roa.network) = 0
+        ORDER BY p.prefix_network, p.prefix_length, p.asn ASC;
+        '''):
+        network_binary, prefix_length, asn = row
+        cidr = _get_cidr(network_binary, prefix_length)
+        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False))
+
+    return flask.render_template(
+        'table-generic.html.j2',
+        page_title='ROA Alerts',
+        tables=[
+            Table('ROA Alerts (Prefixes failing ROA checks)',
+                  ['Prefix', 'ASN', 'ROA valid?'], roa_alerts, show_count=True)
+        ],
+        db_last_update=_get_last_update())

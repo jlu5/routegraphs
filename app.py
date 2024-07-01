@@ -31,6 +31,7 @@ class Table():
     data: List[Iterable[Any]]  # list of rows
     true_emoji: str = _EMOJI_TRUE
     false_emoji: str = _EMOJI_FALSE
+    none_emoji: str = _EMOJI_UNKNOWN
     heading_type: str = 'h2'
     show_count: bool = False
 
@@ -316,23 +317,37 @@ def get_prefixes(backend):
 def get_roa_alerts(backend):
     roa_alerts = []
     for row in backend.dbconn.execute(
-        '''SELECT p.prefix_network, p.prefix_length, p.asn
-        FROM PrefixOriginASNs p
-        LEFT JOIN ROAEntries roa
-        ON p.asn = roa.asn and p.prefix_network >= roa.network and p.prefix_length <= roa.max_length
-        GROUP BY p.prefix_network, p.prefix_length, p.asn
-        HAVING COUNT(roa.network) = 0
-        ORDER BY p.prefix_network, p.prefix_length, p.asn ASC;
+        # Notes: joining on prefixes gives access to broadcast_address field, for the
+        # "all matched ROA entries" part of the query
+        '''SELECT q1.network, q1.length, q1.asn, COUNT(roaEntriesForPrefix.network)
+        FROM (
+            SELECT DISTINCT p.network, p.length, p.broadcast_address, poa.asn
+            FROM Prefixes p
+            INNER JOIN PrefixOriginASNs poa
+            ON p.network = poa.prefix_network AND p.length = poa.prefix_length
+
+            LEFT JOIN ROAEntries roaValidMatches
+            ON poa.asn = roaValidMatches.asn and p.network >= roaValidMatches.network and p.length <= roaValidMatches.max_length
+            GROUP BY p.network, p.length, poa.asn
+            HAVING COUNT(roaValidMatches.network) = 0
+        ) AS q1
+        LEFT JOIN ROAEntries roaEntriesForPrefix
+        ON roaEntriesForPrefix.network <= q1.network AND roaEntriesForPrefix.broadcast_address >= q1.broadcast_address
+        AND roaEntriesForPrefix.length <= q1.length
+        GROUP BY q1.network, q1.length, q1.asn
+        ORDER BY q1.network, q1.length, q1.asn ASC;
         '''):
-        network_binary, prefix_length, asn = row
+        network_binary, prefix_length, asn, n_roa_entries_for_prefix = row
         cidr = _get_cidr(network_binary, prefix_length)
-        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False))
+        # Differentiate between prefixes with some ROA entry vs. none at all
+        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False, bool(n_roa_entries_for_prefix)))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='ROA Alerts',
         tables=[
             Table('ROA Alerts (Prefixes failing ROA checks)',
-                  ['Prefix', 'ASN', 'ROA valid?'], roa_alerts, show_count=True)
+                  ['Prefix', 'ASN', 'ROA valid?', 'ROA entry exists?'],
+                  roa_alerts, show_count=True)
         ],
         db_last_update=_get_last_update())

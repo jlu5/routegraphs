@@ -3,6 +3,8 @@
 {{ table.true_emoji }}
 {% elif cell is sameas False %}
 {{ table.false_emoji }}
+{% elif cell is sameas None %}
+{{ table.none_emoji }}
 {% else %}
 {{ cell }}
 {% endif %}

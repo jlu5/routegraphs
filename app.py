@@ -326,8 +326,12 @@ def get_roa_alerts(backend):
             INNER JOIN PrefixOriginASNs poa
             ON p.network = poa.prefix_network AND p.length = poa.prefix_length
 
+            -- filter on announcements that have NO valid ROA match
             LEFT JOIN ROAEntries roaValidMatches
-            ON poa.asn = roaValidMatches.asn and p.network >= roaValidMatches.network and p.length <= roaValidMatches.max_length
+            ON poa.asn = roaValidMatches.asn AND
+                p.network >= roaValidMatches.network AND
+                p.broadcast_address <= roaValidMatches.broadcast_address AND
+                p.length <= roaValidMatches.max_length
             GROUP BY p.network, p.length, poa.asn
             HAVING COUNT(roaValidMatches.network) = 0
         ) AS q1

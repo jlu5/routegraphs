@@ -41,6 +41,7 @@ def unpack_cidr(prefix: str) -> (bytes, int, bytes):
 # what does it mean to have multiple origin ASes but the rest of the path be the same?
 _AS_PATH_SEGMENT_RE = re.compile('\\{(\\d+)')
 def parse_mrt(mrt_filename, dbconn, registry_path=None):
+    # pylint: disable=no-member
     mrt_reader = pybgpkit_parser.Parser(mrt_filename, filters={'type': 'announce'})
     as_names = {}
     for entry in mrt_reader:

@@ -26,7 +26,7 @@ _EMOJI_FALSE = '❌'
 _EMOJI_UNKNOWN = '❓'
 @dataclass
 class Table():
-    name: str
+    name: str | tuple[str, str]  # tuple form represents (heading text, hover text)
     headings: List[str]
     data: List[Iterable[Any]]  # list of rows
     true_emoji: str = _EMOJI_TRUE
@@ -34,6 +34,8 @@ class Table():
     none_emoji: str = _EMOJI_UNKNOWN
     heading_type: str = 'h2'
     show_count: bool = False
+
+_GLOBALLY_VISIBLE_HEADING = ('Globally visible?', 'Low visibility paths may indicate a leak to GRC - only 1 path seen for this prefix')
 
 def wrap_get_backend(f):
     """
@@ -118,17 +120,22 @@ def index(backend):
             ipprefix = backend.get_most_specific_prefix(prefix)
         except ValueError:
             return render_error(f'Invalid CIDR {prefix}')
-        for asn in backend.dbconn.execute(
-                '''SELECT asn FROM PrefixOriginASNs
+        for asn, is_globally_visible in backend.dbconn.execute(
+                '''SELECT asn, (
+                    SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == poa.prefix_network
+                    AND pp.prefix_length == poa.prefix_length
+                )
+                FROM PrefixOriginASNs poa
                 WHERE prefix_network == ? AND prefix_length == ?''',
                 (ipprefix.network_address.packed, ipprefix.prefixlen)):
             roa_entries = roacheck.check_roa(backend.dbconn, str(ipprefix), asn)
             prefix_asns.append((
                 _get_asn_link(asn) + _add_asn_button(asn),
-                bool(roa_entries)
+                bool(roa_entries),
+                bool(is_globally_visible)
             ))
         origin_asns_table = Table(f'Origin ASNs for {ipprefix}',
-            ['Origin ASNs', 'ROA valid?'],
+            ['Origin ASNs', 'ROA valid?', _GLOBALLY_VISIBLE_HEADING],
             prefix_asns,
             heading_type='h3'
         )
@@ -227,15 +234,19 @@ def get_asn_info(backend, asn):
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
     as_name = _format_asn_name(asn, as_name)
     for row in backend.dbconn.execute(
-        '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn)
+        '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn), (
+            SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == p1.prefix_network
+            AND pp.prefix_length == p1.prefix_length
+        )
         FROM PrefixOriginASNs p1
         INNER JOIN PrefixOriginASNs p2
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
         WHERE p1.asn == ?
         GROUP BY p1.prefix_network, p1.prefix_length;''', (asn,)):
-        cidr = _get_cidr(row[0], row[1])
+        prefix_network, prefix_length, n_origin_asns, is_globally_visible = row
+        cidr = _get_cidr(prefix_network, prefix_length)
         roa_entries = roacheck.check_roa(backend.dbconn, cidr, asn)
-        asn_prefixes.append((_get_prefix_link(cidr), bool(roa_entries), row[2]))
+        asn_prefixes.append((_get_prefix_link(cidr), bool(roa_entries), n_origin_asns, bool(is_globally_visible)))
 
     direct_feeds = set(backend.dbconn.execute(
         '''SELECT asn FROM ASNs WHERE direct_feed == 1'''))
@@ -276,7 +287,7 @@ def get_asn_info(backend, asn):
         direct_feed=_EMOJI_TRUE if asn in direct_feeds else _EMOJI_FALSE,
         tables=[
             Table(f'AS{asn} Prefixes',
-                  ['Prefix', 'ROA valid?', '# Origin ASNs'],
+                  ['Prefix', 'ROA valid?', '# Origin ASNs', _GLOBALLY_VISIBLE_HEADING],
                   asn_prefixes, show_count=True),
             Table(f'AS{asn} Peers',
                   ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
@@ -289,7 +300,8 @@ def get_asn_info(backend, asn):
 def get_prefixes(backend):
     prefixes = []
     for row in backend.dbconn.execute(
-        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(DISTINCT p2.asn), COUNT(roa.network)
+        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(DISTINCT p2.asn), COUNT(roa.network),
+            (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == p1.prefix_network AND pp.prefix_length == p1.prefix_length)
         FROM PrefixOriginASNs p1
         INNER JOIN PrefixOriginASNs p2
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
@@ -298,16 +310,16 @@ def get_prefixes(backend):
         GROUP BY p1.prefix_network, p1.prefix_length, p1.asn
         ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;
         '''):
-        network_binary, prefix_length, asn, n_origin_asns, roa_matches = row
+        network_binary, prefix_length, asn, n_origin_asns, roa_matches, is_globally_visible = row
         cidr = _get_cidr(network_binary, prefix_length)
-        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches)))
+        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches), bool(is_globally_visible)))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All Visible Prefixes',
         tables=[
             Table('All Visible Prefixes',
-                  ['Prefix', 'ASN', '# Origin ASNs', 'ROA valid?'],
+                  ['Prefix', 'ASN', '# Origin ASNs', 'ROA valid?', _GLOBALLY_VISIBLE_HEADING],
                   prefixes, show_count=True)
         ],
         db_last_update=_get_last_update())
@@ -319,7 +331,8 @@ def get_roa_alerts(backend):
     for row in backend.dbconn.execute(
         # Notes: joining on prefixes gives access to broadcast_address field, for the
         # "all matched ROA entries" part of the query
-        '''SELECT q1.network, q1.length, q1.asn, COUNT(roaEntriesForPrefix.network)
+        '''SELECT q1.network, q1.length, q1.asn, COUNT(roaEntriesForPrefix.network),
+            (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == q1.network AND pp.prefix_length == q1.length)
         FROM (
             SELECT DISTINCT p.network, p.length, p.broadcast_address, poa.asn
             FROM Prefixes p
@@ -341,17 +354,17 @@ def get_roa_alerts(backend):
         GROUP BY q1.network, q1.length, q1.asn
         ORDER BY q1.network, q1.length, q1.asn ASC;
         '''):
-        network_binary, prefix_length, asn, n_roa_entries_for_prefix = row
+        network_binary, prefix_length, asn, n_roa_entries_for_prefix, is_globally_visible = row
         cidr = _get_cidr(network_binary, prefix_length)
         # Differentiate between prefixes with some ROA entry vs. none at all
-        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False, bool(n_roa_entries_for_prefix)))
+        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False, bool(n_roa_entries_for_prefix), bool(is_globally_visible)))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='ROA Alerts',
         tables=[
             Table('ROA Alerts (Prefixes failing ROA checks)',
-                  ['Prefix', 'ASN', 'ROA valid?', 'ROA entry exists?'],
+                  ['Prefix', 'ASN', 'ROA valid?', 'ROA entry exists?', _GLOBALLY_VISIBLE_HEADING],
                   roa_alerts, show_count=True)
         ],
         db_last_update=_get_last_update())

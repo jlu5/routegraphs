@@ -19,7 +19,13 @@
 {% if table.headings %}
 <tr>
 {% for heading in table.headings %}
-<th>{{ render_cell(table, heading) }}</th>
+<th>
+{% if heading is string %}
+    {{ heading }}
+{% else %}
+    <span class="tooltip" title="{{ heading[1] | e}}">{{ heading[0] }}</span>
+{% endif %}
+</th>
 {% endfor %}
 </tr>
 {% endif %}

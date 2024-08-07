@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 import datetime
 import os
-import socket
 import sqlite3
 import traceback
 from typing import Any, Iterable, List
@@ -13,6 +12,7 @@ import networkx
 
 import routegraphs
 import roacheck
+from utils import get_cidr
 
 app = flask.Flask(__name__)
 
@@ -69,7 +69,7 @@ def render_error(error_str=None):
 def render_static(path):
     return flask.send_from_directory('static', path)
 
-def get_graph(backend):
+def get_graph(backend, roa_valid_origins=None):
     target_prefix = flask.request.args.get('ip_prefix')
 
     asns = flask.request.args.getlist('asn')
@@ -84,7 +84,7 @@ def get_graph(backend):
     base_url = None
     if not flask.request.args.get('hide_graph_links'):
         base_url = BASE_URL or flask.request.base_url
-    dot = backend.graph_result(asns, routegraph_data, base_url=base_url)
+    dot = backend.graph_result(asns, routegraph_data, base_url=base_url, roa_valid_origins=roa_valid_origins)
     return dot.pipe(format='svg').decode('utf-8')
 
 def _get_last_update():
@@ -110,11 +110,6 @@ def _get_roa_link(cidr):
 def index(backend):
     graph_svg = None
     error = None
-    if flask.request.args.get('ip_prefix') and flask.request.args.getlist('asn'):
-        try:
-            graph_svg = get_graph(backend)
-        except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
-            return render_error(e)
 
     def _add_asn_button(asn):
         return f'<button onclick="addAsn({asn})">Add</button>'
@@ -127,6 +122,7 @@ def index(backend):
             ipprefix = backend.get_most_specific_prefix(prefix)
         except ValueError:
             return render_error(f'Invalid CIDR {prefix}')
+        roa_valid_origins = roacheck.get_valid_origins(backend.dbconn, str(ipprefix))
         for asn, is_globally_visible in backend.dbconn.execute(
                 '''SELECT asn, (
                     SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == poa.prefix_network
@@ -135,10 +131,9 @@ def index(backend):
                 FROM PrefixOriginASNs poa
                 WHERE prefix_network == ? AND prefix_length == ?''',
                 (ipprefix.network_address.packed, ipprefix.prefixlen)):
-            roa_entries = roacheck.check_roa(backend.dbconn, str(ipprefix), asn)
             prefix_asns.append((
                 _get_asn_link(asn) + _add_asn_button(asn),
-                bool(roa_entries),
+                asn in roa_valid_origins,
                 bool(is_globally_visible)
             ))
         origin_asns_table = Table(f'Origin ASNs for {ipprefix}',
@@ -147,20 +142,23 @@ def index(backend):
             heading_type='h3'
         )
         # All ROA entries matching this prefix
-        roa_entries = []
-        for row in backend.dbconn.execute(
-                '''SELECT network, length, asn, max_length FROM ROAEntries
-                WHERE network <= ? AND broadcast_address >= ? AND length <= ?''',
-                (ipprefix.network_address.packed, ipprefix.broadcast_address.packed, ipprefix.prefixlen)):
-            roa_cidr = _get_cidr(row[0], row[1])
-            roa_entries.append(
-                (_get_roa_link(roa_cidr), _get_asn_link(row[2]), row[3])
-            )
+        roa_valid_origins_display = []
+        for asn, roa_entry_set in roa_valid_origins.items():
+            for roa_cidr, max_length in roa_entry_set:
+                roa_valid_origins_display.append(
+                    (_get_roa_link(roa_cidr), _get_asn_link(asn), max_length)
+                )
         roa_entries_table = Table(f'Known ROA entries for {ipprefix}',
             ['ROA entry', 'ASN', 'Max allowed length'],
-            roa_entries,
+            roa_valid_origins_display,
             heading_type='h3'
         )
+
+        if flask.request.args.getlist('asn'):
+            try:
+                graph_svg = get_graph(backend, roa_valid_origins=roa_valid_origins)
+            except (ValueError, LookupError, networkx.exception.NetworkXException) as e:
+                return render_error(e)
 
     suggested_asns = []
     for asn, peercount in backend.get_suggested_asns():
@@ -185,13 +183,6 @@ def _get_asn_link(asn):
 
 def _get_prefix_link(prefix):
     return f'<a href="/?ip_prefix={prefix}">{prefix}</a>'
-
-def _get_cidr(network_binary, prefix_length):
-    network = socket.inet_ntop(
-            socket.AF_INET6 if len(network_binary) == 16 else socket.AF_INET,
-            network_binary)
-    cidr = f'{network}/{prefix_length}'
-    return cidr
 
 def _format_asn_name(asn, name):
     return name or f'&lt;Unknown AS {asn}&gt;'
@@ -251,7 +242,7 @@ def get_asn_info(backend, asn):
         WHERE p1.asn == ?
         GROUP BY p1.prefix_network, p1.prefix_length;''', (asn,)):
         prefix_network, prefix_length, n_origin_asns, is_globally_visible = row
-        cidr = _get_cidr(prefix_network, prefix_length)
+        cidr = get_cidr(prefix_network, prefix_length)
         roa_entries = roacheck.check_roa(backend.dbconn, cidr, asn)
         asn_prefixes.append((_get_prefix_link(cidr), bool(roa_entries), n_origin_asns, bool(is_globally_visible)))
 
@@ -318,7 +309,7 @@ def get_prefixes(backend):
         ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;
         '''):
         network_binary, prefix_length, asn, n_origin_asns, roa_matches, is_globally_visible = row
-        cidr = _get_cidr(network_binary, prefix_length)
+        cidr = get_cidr(network_binary, prefix_length)
         prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches), bool(is_globally_visible)))
 
     return flask.render_template(
@@ -362,7 +353,7 @@ def get_roa_alerts(backend):
         ORDER BY q1.network, q1.length, q1.asn ASC;
         '''):
         network_binary, prefix_length, asn, n_roa_entries_for_prefix, is_globally_visible = row
-        cidr = _get_cidr(network_binary, prefix_length)
+        cidr = get_cidr(network_binary, prefix_length)
         # Differentiate between prefixes with some ROA entry vs. none at all
         roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False, bool(n_roa_entries_for_prefix), bool(is_globally_visible)))
 

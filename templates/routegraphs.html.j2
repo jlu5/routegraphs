@@ -54,7 +54,8 @@
 <p>This tool uses MRT dumps from the dn42 <a href="https://dn42.dev/services/Route-Collector">Global Route Collector (GRC)</a>.</p>
 <ul>
 <li><span style="color: dodgerblue">Blue</span>: selected source ASN</li>
-<li><span style="color: lightgreen">Green</span>: origin ASN</li>
+<li><span style="color: lightgreen">Green</span>: origin ASN, passing ROA</li>
+<li><span style="color: rgb(255, 108, 108)">Red</span>: origin ASN, failing ROA</li>
 <li><span style="border: white 1px solid; padding: 0 2px">Solid line</span>: this adjacency is known to exist from GRC paths</li>
 <li><span style="border: grey 1px dashed; padding: 0 2px">Dashed line</span>: guessed path; source ASN has no route to this prefix visible to the GRC</li>
 </ul>

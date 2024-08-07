@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 import html
 import ipaddress
 import sqlite3
-from typing import List
 import urllib.parse
 
 import graphviz
@@ -128,7 +127,7 @@ class RouteGraph():
         GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC
         LIMIT {int(limit)}''').fetchall()
 
-    def graph_result(self, source_asns: List[int], result: PathsToPrefixResult, base_url=None):
+    def graph_result(self, source_asns: list[int], result: PathsToPrefixResult, roa_valid_origins=None, base_url=None):
         dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
             node_attr={'penwidth': '1.5', 'margin': '0.02'})
         dot.attr(rankdir='LR')
@@ -138,7 +137,7 @@ class RouteGraph():
             dest_prefix_url = urllib.parse.urljoin(base_url, f'?ip_prefix={result.prefix}')
         else:
             dest_prefix_url = None
-        dot.node('dest_prefix', label=str(result.prefix), color='green', URL=dest_prefix_url)
+        dot.node('dest_prefix', label=str(result.prefix), URL=dest_prefix_url)
 
         seen_edges = set()
         def _add_edge(n1, n2, **kwargs):
@@ -175,10 +174,16 @@ class RouteGraph():
                         attrs = {'style': 'dashed', 'color': 'grey'}
                     elif previous_asn == current_asn:
                         continue
-                    _add_asn(current_asn)
+                    if idx < len(path) - 1:
+                        # Origin ASNs are handled separately below
+                        _add_asn(current_asn)
                     _add_edge(f'AS{previous_asn}', f'AS{current_asn}', **attrs)
 
-            _add_edge(f'AS{current_asn}', 'dest_prefix')
+            dest_prefix_color = 'black'
+            if roa_valid_origins is not None:
+                dest_prefix_color = 'green' if current_asn in roa_valid_origins else 'red'
+            _add_asn(current_asn, color=dest_prefix_color)
+            _add_edge(f'AS{current_asn}', 'dest_prefix', color=dest_prefix_color)
         return dot
 
 def main():

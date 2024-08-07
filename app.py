@@ -35,7 +35,14 @@ class Table():
     heading_type: str = 'h2'
     show_count: bool = False
 
-_GLOBALLY_VISIBLE_HEADING = ('Globally visible?', 'Low visibility paths may indicate a leak to GRC - only 1 path seen for this prefix')
+_GLOBALLY_VISIBLE_HEADING = (
+    'Globally visible?', 'Low visibility paths may indicate a leak to GRC - only 1 path seen for this prefix')
+_RECEIVES_TRANSIT_HEADING = (
+    'Receives transit?',
+    'ASN A receiving transit from B is defined as there existing some path in the GRC matching [* A B C *] where B != C')
+_SENDS_TRANSIT_HEADING = (
+    'Sends transit?',
+    'ASN A sending transit to B is defined as there existing some path in the GRC matching [* B A C *] where A != C')
 
 def wrap_get_backend(f):
     """
@@ -290,7 +297,7 @@ def get_asn_info(backend, asn):
                   ['Prefix', 'ROA valid?', '# Origin ASNs', _GLOBALLY_VISIBLE_HEADING],
                   asn_prefixes, show_count=True),
             Table(f'AS{asn} Peers',
-                  ['Peer ASN', 'Peer Name', 'Receives transit?', 'Sends transit?'],
+                  ['Peer ASN', 'Peer Name', _RECEIVES_TRANSIT_HEADING, _SENDS_TRANSIT_HEADING],
                   asn_peers, show_count=True)
         ],
         db_last_update=_get_last_update())

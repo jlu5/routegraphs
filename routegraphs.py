@@ -16,7 +16,7 @@ import networkx
 class PathsToPrefixResult:
     prefix: ipaddress.IPv4Network | ipaddress.IPv6Network
     paths: set = field(default_factory=set)
-    guessed_upstreams: set = field(default_factory=set)
+    guessed_paths: set = field(default_factory=set)
 
 class RouteGraph():
     def __init__(self, db_filename):
@@ -66,11 +66,9 @@ class RouteGraph():
         print(f'get_most_specific_prefix: Resolving prefix {prefix_or_ip} -> {result}')
         return result
 
-    def asn_paths_to_prefix(self, prefix, asn):
+    def asn_paths_to_prefix(self, prefix, asn) -> PathsToPrefixResult:
         """
         Get a set of optimal paths from ASN to prefix.
-
-        Results are returned in PathsToPrefixResult class instances
         """
         if isinstance(prefix, str):
             prefix = self.get_most_specific_prefix(prefix)
@@ -81,40 +79,38 @@ class RouteGraph():
         )
         minlen = float('inf')
         candidate_paths = collections.defaultdict(set)
-        guessed_upstreams = set()
+        origin_asns = set(self.dbconn.execute(
+            '''SELECT asn from PrefixOriginASNs WHERE prefix_network==? AND prefix_length==?;''',
+            (prefix.network_address.packed, prefix.prefixlen)
+        ))
         for collector_path_id, asn_index in collector_paths.fetchall():
             path = self.get_path(collector_path_id, start_index=asn_index)
-            if len(path) <= minlen:  # don't bother adding anything with longer length than current shortest
+            if len(path) <= minlen:
                 candidate_paths[len(path)].add(path)
             minlen = min(minlen, len(path))
+
+        guessed_paths = collections.defaultdict(set)
         if minlen != float('inf'):
             print(f'Known best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
         else:
-            origin_asns = self.dbconn.execute(
-                '''SELECT asn FROM PrefixOriginASNs WHERE prefix_network=? AND prefix_length=?''',
-                (prefix.network_address.packed, prefix.prefixlen)).fetchall()
             for target_asn in origin_asns:
                 print(f"Computing paths from {asn} -> {target_asn}")
-                paths = set()
                 for path in networkx.all_shortest_paths(self.graph, asn, target_asn):
                     if len(path) <= minlen:
-                        paths.add(tuple(path))
-                        minlen = len(path)
-                    else:
-                        break  # Don't bother adding paths longer than minimum
-                candidate_paths[minlen] |= paths
+                        guessed_paths[len(path)].add(tuple(path))
+                    minlen = min(minlen, len(path))
 
-            guessed_upstreams.add(asn)
-            print(f'Guessed best paths FROM {asn} to {prefix} (len {minlen}):', candidate_paths[minlen])
-        return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_upstreams)
+            print(f'Guessed best paths FROM {asn} to {prefix} (len {minlen}):', guessed_paths[minlen])
+        return PathsToPrefixResult(prefix, candidate_paths[minlen], guessed_paths[minlen])
 
-    def asns_paths_to_prefix(self, prefix, source_asns):
+    def asns_paths_to_prefix(self, prefix, source_asns) -> PathsToPrefixResult:
         summary = PathsToPrefixResult('')
         for source_asn in source_asns:
             result = self.asn_paths_to_prefix(prefix, source_asn)
             summary.prefix = result.prefix
+            assert not summary.prefix or summary.prefix == result.prefix
             summary.paths |= result.paths
-            summary.guessed_upstreams |= result.guessed_upstreams
+            summary.guessed_paths |= result.guessed_paths
         return summary
 
     def get_suggested_asns(self, limit=10):
@@ -127,7 +123,8 @@ class RouteGraph():
         GROUP BY local_asn ORDER BY COUNT(peer_asn) DESC
         LIMIT {int(limit)}''').fetchall()
 
-    def graph_result(self, source_asns: list[int], result: PathsToPrefixResult, roa_valid_origins=None, base_url=None):
+    def graph_result(self, requested_source_asns: list[int], result: PathsToPrefixResult, roa_valid_origins=None,
+                     base_url=None):
         dot = graphviz.Digraph(name=f'Connectivity to {result.prefix}',
             node_attr={'penwidth': '1.5', 'margin': '0.02'})
         dot.attr(rankdir='LR')
@@ -146,11 +143,14 @@ class RouteGraph():
                 seen_edges.add((n1, n2))
 
         seen_asns = set()
+        asns_with_confirmed_path = set()
         def _add_asn(asn, **kwargs):
             if asn not in seen_asns:
                 seen_asns.add(asn)
                 # Add the AS name to the graph if applicable
                 as_name = self.dbconn.execute('''SELECT name FROM ASNs where asn == ?''', (asn,)).fetchone()
+                if asn in requested_source_asns:
+                    kwargs |= {'color': 'blue'}
                 as_node_name = f'AS{asn}'
                 if as_name:
                     as_label = f'{as_node_name}\n{as_name}'
@@ -160,30 +160,39 @@ class RouteGraph():
                     kwargs['URL'] = urllib.parse.urljoin(base_url, f'asn/{asn}')
                 dot.node(as_node_name, label=as_label, **kwargs)
 
-        for asn in source_asns:
-            _add_asn(asn, color='blue')
+        def _add_origin_asn(asn):
+            dest_prefix_color = 'black'
+            if roa_valid_origins is not None:
+                dest_prefix_color = 'green' if asn in roa_valid_origins else 'red'
+            _add_asn(asn, color=dest_prefix_color)
+            _add_edge(f'AS{asn}', 'dest_prefix', color=dest_prefix_color)
 
-        for path in result.paths:
+        def _add_path(path, is_guessed=False):
             assert path, "Got an empty path?"
             current_asn = None
             for idx, current_asn in enumerate(path):
+                style = 'dashed' if is_guessed else ''
+                if idx < len(path) - 1:
+                    # Origin ASNs are handled separately below
+                    _add_asn(current_asn, style=style)
                 if idx:
                     previous_asn = path[idx-1]
-                    attrs = {}
-                    if previous_asn in result.guessed_upstreams:
-                        attrs = {'style': 'dashed', 'color': 'grey'}
-                    elif previous_asn == current_asn:
+                    if previous_asn == current_asn:
                         continue
-                    if idx < len(path) - 1:
-                        # Origin ASNs are handled separately below
-                        _add_asn(current_asn)
-                    _add_edge(f'AS{previous_asn}', f'AS{current_asn}', **attrs)
+                    _add_edge(f'AS{previous_asn}', f'AS{current_asn}', style=style)
+                # If we're processing guessed paths, stop drawing fragments once we hit any ASN that's part of a
+                # confirmed path
+                if not is_guessed:
+                    asns_with_confirmed_path.add(current_asn)
+                elif current_asn in asns_with_confirmed_path:
+                    break
+            else:
+                _add_origin_asn(current_asn)
 
-            dest_prefix_color = 'black'
-            if roa_valid_origins is not None:
-                dest_prefix_color = 'green' if current_asn in roa_valid_origins else 'red'
-            _add_asn(current_asn, color=dest_prefix_color)
-            _add_edge(f'AS{current_asn}', 'dest_prefix', color=dest_prefix_color)
+        for path in result.paths:
+            _add_path(path)
+        for path in result.guessed_paths:
+            _add_path(path, is_guessed=True)
         return dot
 
 def main():

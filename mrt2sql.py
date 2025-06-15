@@ -46,17 +46,17 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
     as_names = {}
     for entry in mrt_reader:
         # Feed ASN
-        feed_asn = entry['peer_asn']
+        feed_asn = entry.peer_asn
         if registry_path and feed_asn not in as_names:
             as_names[feed_asn] = get_as_name(registry_path, feed_asn)
         dbconn.execute("INSERT OR REPLACE INTO ASNs VALUES(?, 1, ?)", (feed_asn, as_names.get(feed_asn, '')))
 
-        prefix = entry['prefix']
+        prefix = entry.prefix
         unpacked_cidr = unpack_cidr(prefix)
         network_address_packed, prefix_length, _ = unpacked_cidr
         dbconn.execute("INSERT OR IGNORE INTO Prefixes VALUES(?, ?, ?)", unpacked_cidr)
 
-        as_path = entry['as_path'].split()
+        as_path = entry.as_path.split()
         as_path_parts = []
         ok = True
         for path_segment in as_path:

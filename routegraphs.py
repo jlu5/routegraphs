@@ -113,7 +113,7 @@ class RouteGraph():
             summary.guessed_paths |= result.guessed_paths
         return summary
 
-    def get_suggested_asns(self, limit=10):
+    def get_suggested_asns(self, limit=14):
         return self.dbconn.execute(
             f'''SELECT local_asn, COUNT(peer_asn) FROM
         (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn

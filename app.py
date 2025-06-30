@@ -325,3 +325,27 @@ def get_roa_alerts(backend):
                   roa_alerts, show_count=True)
         ],
         db_last_update=_get_last_update())
+
+@app.route("/grc-leaks")
+@wrap_get_backend
+def get_grc_leaks(backend):
+    data = []
+    for row in backend.dbconn.execute(
+        '''
+        SELECT prefix_network, prefix_length, asn
+        FROM RouteAdvertisementPublic
+        WHERE NOT public
+        '''):
+        network_binary, prefix_length, asn = row
+        cidr = get_cidr(network_binary, prefix_length)
+        data.append((_get_prefix_link(cidr), _get_asn_link(asn), False))
+
+    return flask.render_template(
+        'table-generic.html.j2',
+        page_title='GRC Leaks',
+        tables=[
+            Table('GRC Leaks (Prefixes only visible to GRC)',
+                  ['Prefix', 'ASN', _GLOBALLY_VISIBLE_HEADING],
+                  data, show_count=True)
+        ],
+        db_last_update=_get_last_update())

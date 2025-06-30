@@ -62,3 +62,34 @@ CREATE TABLE "NeighbourASNs" (
   FOREIGN KEY("receiver_asn") REFERENCES ASNs("asn"),
   FOREIGN KEY("sender_asn") REFERENCES ASNs("asn")
 );
+
+-- Like NeighbourASNs but bidirectional
+CREATE VIEW NeighbourASNsBidi AS
+SELECT receiver_asn AS local_asn, sender_asn AS peer_asn, transit AS receives_transit, 0 AS sends_transit
+FROM NeighbourASNs UNION
+SELECT sender_asn AS local_asn, receiver_asn AS peer_asn, 0 AS receives_transit, transit AS sends_transit
+FROM NeighbourASNs;
+
+-- Number of peers per ASN
+CREATE VIEW ASNPeerCount AS
+SELECT local_asn as asn, COUNT(peer_asn) AS n_peers
+FROM NeighbourASNsBidi
+GROUP BY asn;
+
+-- All advertisements and whether they pass ROA
+CREATE VIEW RouteAdvertisementROA AS
+SELECT poa.prefix_network, poa.prefix_length, poa.asn, COUNT(roa.network) as roa_matches
+FROM PrefixOriginASNs poa
+INNER JOIN Prefixes p -- to get access to broadcast_address
+ON p.network = poa.prefix_network AND p.length = poa.prefix_length
+LEFT JOIN ROAEntries roa
+ON poa.asn = roa.asn AND poa.prefix_network >= roa.network AND poa.prefix_length <= roa.max_length AND roa.broadcast_address >= p.broadcast_address
+GROUP BY poa.prefix_network, poa.prefix_length, poa.asn;
+
+-- All advertisements and whether they are globally visible
+CREATE VIEW RouteAdvertisementPublic AS
+SELECT pp.prefix_network, pp.prefix_length, asn, count(path_id) > 1 AS public
+FROM PrefixPaths pp
+INNER JOIN PrefixOriginASNs poa
+ON poa.prefix_network == pp.prefix_network AND poa.prefix_length == pp.prefix_length
+GROUP BY pp.prefix_network, pp.prefix_length, asn;

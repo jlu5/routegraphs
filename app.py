@@ -124,12 +124,9 @@ def index(backend):
             return render_error(f'Invalid CIDR {prefix}')
         roa_valid_origins = roacheck.get_valid_origins(backend.dbconn, str(ipprefix))
         for asn, is_globally_visible in backend.dbconn.execute(
-                '''SELECT asn, (
-                    SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == poa.prefix_network
-                    AND pp.prefix_length == poa.prefix_length
-                )
-                FROM PrefixOriginASNs poa
-                WHERE prefix_network == ? AND prefix_length == ?''',
+                '''SELECT asn, public
+                FROM RouteAdvertisementPublic
+                WHERE prefix_network == ? AND prefix_length == ?;''',
                 (ipprefix.network_address.packed, ipprefix.prefixlen)):
             prefix_asns.append((
                 _get_asn_link(asn) + _add_asn_button(asn),
@@ -192,20 +189,12 @@ def _format_asn_name(asn, name):
 def get_asns(backend):
     data = []
     for row in backend.dbconn.execute(
-        '''SELECT local_asn, name, n_peers, COUNT(prefix_network), direct_feed FROM (
-            SELECT local_asn, COUNT(peer_asn) AS n_peers FROM (
-                SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
-                FROM NeighbourASNs UNION
-                SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
-                FROM NeighbourASNs
-            )
-            GROUP BY local_asn
-        )
-        LEFT JOIN PrefixOriginASNs poa ON poa.asn == local_asn
-        LEFT JOIN ASNs ON ASNs.asn = local_asn
-        GROUP BY local_asn
-        ORDER BY n_peers DESC
-        ;'''):
+        '''SELECT a.asn, name, apc.n_peers, COUNT(prefix_network), direct_feed
+        FROM ASNs a
+        LEFT JOIN PrefixOriginASNs poa ON poa.asn == a.asn
+        LEFT JOIN ASNPeerCount apc ON apc.asn = a.asn
+        GROUP BY a.asn
+        ORDER BY apc.n_peers DESC;'''):
         asn, as_name, n_peers, n_prefixes, direct_feed = row
         direct_feed = bool(direct_feed)
         as_name = _format_asn_name(asn, as_name)
@@ -232,11 +221,8 @@ def get_asn_info(backend, asn):
         '''SELECT name FROM ASNs WHERE asn == ?;''', (asn,)).fetchone()
     as_name = _format_asn_name(asn, as_name)
     for row in backend.dbconn.execute(
-        '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn), (
-            SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == p1.prefix_network
-            AND pp.prefix_length == p1.prefix_length
-        )
-        FROM PrefixOriginASNs p1
+        '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn), public
+        FROM RouteAdvertisementPublic p1
         INNER JOIN PrefixOriginASNs p2
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
         WHERE p1.asn == ?
@@ -251,11 +237,8 @@ def get_asn_info(backend, asn):
 
     asn_peers = []
     for row in backend.dbconn.execute(
-        '''SELECT DISTINCT peer_asn, name, MAX(receives_transit), MAX(sends_transit) FROM
-        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn, transit AS receives_transit, 0 AS sends_transit
-        FROM NeighbourASNs UNION
-        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn, 0 AS receives_transit, transit AS sends_transit
-        FROM NeighbourASNs)
+        '''SELECT DISTINCT peer_asn, name, MAX(receives_transit), MAX(sends_transit)
+        FROM NeighbourASNsBidi
         INNER JOIN ASNs on ASNs.asn = peer_asn
         WHERE local_asn = ? AND peer_asn <> local_asn
         GROUP BY peer_asn''', (asn,)):
@@ -298,26 +281,23 @@ def get_asn_info(backend, asn):
 def get_prefixes(backend):
     prefixes = []
     for row in backend.dbconn.execute(
-        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(DISTINCT p2.asn), COUNT(roa.network),
-            (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == p1.prefix_network AND pp.prefix_length == p1.prefix_length)
-        FROM PrefixOriginASNs p1
-        INNER JOIN PrefixOriginASNs p2
+        '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(p2.asn) AS n_origin_asns, roa_matches
+        FROM RouteAdvertisementROA p1
+        INNER JOIN PrefixOriginASNs p2 -- for number of ASNs advertising this prefix
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
-        LEFT JOIN ROAEntries roa
-        ON p1.asn = roa.asn and p1.prefix_network >= roa.network and p1.prefix_length <= roa.max_length
         GROUP BY p1.prefix_network, p1.prefix_length, p1.asn
         ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;
         '''):
-        network_binary, prefix_length, asn, n_origin_asns, roa_matches, is_globally_visible = row
+        network_binary, prefix_length, asn, n_origin_asns, roa_matches = row
         cidr = get_cidr(network_binary, prefix_length)
-        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches), bool(is_globally_visible)))
+        prefixes.append((_get_prefix_link(cidr), _get_asn_link(asn), n_origin_asns, bool(roa_matches)))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='All Visible Prefixes',
         tables=[
             Table('All Visible Prefixes',
-                  ['Prefix', 'ASN', '# Origin ASNs', 'ROA valid?', _GLOBALLY_VISIBLE_HEADING],
+                  ['Prefix', 'ASN', '# Origin ASNs', 'ROA valid?'],
                   prefixes, show_count=True)
         ],
         db_last_update=_get_last_update())
@@ -327,42 +307,21 @@ def get_prefixes(backend):
 def get_roa_alerts(backend):
     roa_alerts = []
     for row in backend.dbconn.execute(
-        # Notes: joining on prefixes gives access to broadcast_address field, for the
-        # "all matched ROA entries" part of the query
-        '''SELECT q1.network, q1.length, q1.asn, COUNT(roaEntriesForPrefix.network),
-            (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == q1.network AND pp.prefix_length == q1.length)
-        FROM (
-            SELECT DISTINCT p.network, p.length, p.broadcast_address, poa.asn
-            FROM Prefixes p
-            INNER JOIN PrefixOriginASNs poa
-            ON p.network = poa.prefix_network AND p.length = poa.prefix_length
-
-            -- filter on announcements that have NO valid ROA match
-            LEFT JOIN ROAEntries roaValidMatches
-            ON poa.asn = roaValidMatches.asn AND
-                p.network >= roaValidMatches.network AND
-                p.broadcast_address <= roaValidMatches.broadcast_address AND
-                p.length <= roaValidMatches.max_length
-            GROUP BY p.network, p.length, poa.asn
-            HAVING COUNT(roaValidMatches.network) = 0
-        ) AS q1
-        LEFT JOIN ROAEntries roaEntriesForPrefix
-        ON roaEntriesForPrefix.network <= q1.network AND roaEntriesForPrefix.broadcast_address >= q1.broadcast_address
-        AND roaEntriesForPrefix.length <= q1.length
-        GROUP BY q1.network, q1.length, q1.asn
-        ORDER BY q1.network, q1.length, q1.asn ASC;
+        '''
+        SELECT prefix_network, prefix_length, asn
+        FROM RouteAdvertisementROA
+        WHERE NOT roa_matches
         '''):
-        network_binary, prefix_length, asn, n_roa_entries_for_prefix, is_globally_visible = row
+        network_binary, prefix_length, asn = row
         cidr = get_cidr(network_binary, prefix_length)
-        # Differentiate between prefixes with some ROA entry vs. none at all
-        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False, bool(n_roa_entries_for_prefix), bool(is_globally_visible)))
+        roa_alerts.append((_get_prefix_link(cidr), _get_asn_link(asn), False))
 
     return flask.render_template(
         'table-generic.html.j2',
         page_title='ROA Alerts',
         tables=[
             Table('ROA Alerts (Prefixes failing ROA checks)',
-                  ['Prefix', 'ASN', 'ROA valid?', 'ROA entry exists?', _GLOBALLY_VISIBLE_HEADING],
+                  ['Prefix', 'ASN', 'ROA valid?'],
                   roa_alerts, show_count=True)
         ],
         db_last_update=_get_last_update())

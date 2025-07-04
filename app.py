@@ -331,7 +331,7 @@ def get_grc_leaks(backend):
     for row in backend.dbconn.execute(
         '''
         SELECT prefix_network, prefix_length, asn
-        FROM RouteAdvertisementPublic
+        FROM RouteAdvertisementROA
         WHERE NOT public
         '''):
         network_binary, prefix_length, asn = row

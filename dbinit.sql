@@ -76,7 +76,7 @@ SELECT local_asn as asn, COUNT(peer_asn) AS n_peers
 FROM NeighbourASNsBidi
 GROUP BY asn;
 
--- All advertisements and whether they pass ROA
+-- All advertisements and whether they pass ROA / are a GRC leak
 CREATE VIEW RouteAdvertisementROA AS
 SELECT ann.prefix_network, ann.prefix_length, ann.asn, COUNT(roa.network) as roa_ok, (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == ann.prefix_network AND pp.prefix_length == ann.prefix_length) as public
 FROM Announcements ann
@@ -85,8 +85,3 @@ ON p.network = ann.prefix_network AND p.length = ann.prefix_length
 LEFT JOIN ROAEntries roa
 ON ann.asn = roa.asn AND ann.prefix_network >= roa.network AND ann.prefix_length <= roa.max_length AND roa.broadcast_address >= p.broadcast_address
 GROUP BY ann.prefix_network, ann.prefix_length, ann.asn;
-
--- All advertisements and whether they are globally visible
-CREATE VIEW RouteAdvertisementPublic AS
-SELECT prefix_network, prefix_length, asn, public
-FROM RouteAdvertisementROA

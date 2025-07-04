@@ -78,7 +78,7 @@ GROUP BY asn;
 
 -- All advertisements and whether they pass ROA
 CREATE VIEW RouteAdvertisementROA AS
-SELECT poa.prefix_network, poa.prefix_length, poa.asn, COUNT(roa.network) as roa_matches
+SELECT poa.prefix_network, poa.prefix_length, poa.asn, COUNT(roa.network) as roa_ok, (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == poa.prefix_network AND pp.prefix_length == poa.prefix_length) as public
 FROM PrefixOriginASNs poa
 INNER JOIN Prefixes p -- to get access to broadcast_address
 ON p.network = poa.prefix_network AND p.length = poa.prefix_length
@@ -88,8 +88,5 @@ GROUP BY poa.prefix_network, poa.prefix_length, poa.asn;
 
 -- All advertisements and whether they are globally visible
 CREATE VIEW RouteAdvertisementPublic AS
-SELECT pp.prefix_network, pp.prefix_length, asn, count(path_id) > 1 AS public
-FROM PrefixPaths pp
-INNER JOIN PrefixOriginASNs poa
-ON poa.prefix_network == pp.prefix_network AND poa.prefix_length == pp.prefix_length
-GROUP BY pp.prefix_network, pp.prefix_length, asn;
+SELECT prefix_network, prefix_length, asn, public
+FROM RouteAdvertisementROA

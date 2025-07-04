@@ -63,7 +63,7 @@ def wrap_get_backend(f):
     return newf
 
 def render_error(error_str=None):
-    return flask.render_template('error.html.j2', error=error_str)
+    return flask.render_template('error.html.j2', error=error_str, page_title='Error')
 
 @app.route('/static/<path:path>')
 def render_static(path):

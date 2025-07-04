@@ -80,7 +80,7 @@ class RouteGraph():
         minlen = float('inf')
         candidate_paths = collections.defaultdict(set)
         origin_asns = set(self.dbconn.execute(
-            '''SELECT asn from PrefixOriginASNs WHERE prefix_network==? AND prefix_length==?;''',
+            '''SELECT asn from Announcements WHERE prefix_network==? AND prefix_length==?;''',
             (prefix.network_address.packed, prefix.prefixlen)
         ))
         for collector_path_id, asn_index in collector_paths.fetchall():

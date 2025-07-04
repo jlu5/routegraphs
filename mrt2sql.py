@@ -104,7 +104,7 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
             (network_address_packed, prefix_length, path_id)
         )
         dbconn.execute(
-            "INSERT OR IGNORE INTO PrefixOriginASNs VALUES(?, ?, ?)",
+            "INSERT OR IGNORE INTO Announcements VALUES(?, ?, ?)",
             (as_path[-1], network_address_packed, prefix_length)
         )
     dbconn.commit()

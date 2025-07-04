@@ -191,7 +191,7 @@ def get_asns(backend):
     for row in backend.dbconn.execute(
         '''SELECT a.asn, name, apc.n_peers, COUNT(prefix_network), direct_feed
         FROM ASNs a
-        LEFT JOIN PrefixOriginASNs poa ON poa.asn == a.asn
+        LEFT JOIN Announcements ann ON ann.asn == a.asn
         LEFT JOIN ASNPeerCount apc ON apc.asn = a.asn
         GROUP BY a.asn
         ORDER BY apc.n_peers DESC;'''):
@@ -223,7 +223,7 @@ def get_asn_info(backend, asn):
     for row in backend.dbconn.execute(
         '''SELECT p1.prefix_network, p1.prefix_length, COUNT(p2.asn), roa_ok, public
         FROM RouteAdvertisementROA p1
-        INNER JOIN PrefixOriginASNs p2
+        INNER JOIN Announcements p2
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
         WHERE p1.asn == ?
         GROUP BY p1.prefix_network, p1.prefix_length;''', (asn,)):
@@ -282,7 +282,7 @@ def get_prefixes(backend):
     for network_binary, prefix_length, asn, n_origin_asns, roa_ok, public in backend.dbconn.execute(
         '''SELECT p1.prefix_network, p1.prefix_length, p1.asn, COUNT(p2.asn) AS n_origin_asns, roa_ok, public
         FROM RouteAdvertisementROA p1
-        INNER JOIN PrefixOriginASNs p2 -- for number of ASNs advertising this prefix
+        INNER JOIN Announcements p2 -- for number of ASNs advertising this prefix
         ON p1.prefix_network == p2.prefix_network AND p1.prefix_length == p2.prefix_length
         GROUP BY p1.prefix_network, p1.prefix_length, p1.asn
         ORDER BY p1.prefix_network, p1.prefix_length, p1.asn ASC;

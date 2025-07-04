@@ -24,7 +24,7 @@ CREATE TABLE "ROAEntries" (
 );
 
 -- Prefix <-> origin ASN mapping
-CREATE TABLE "PrefixOriginASNs" (
+CREATE TABLE "Announcements" (
   "asn" integer,
   "prefix_network" varbinary(16),
   "prefix_length" integer,
@@ -78,13 +78,13 @@ GROUP BY asn;
 
 -- All advertisements and whether they pass ROA
 CREATE VIEW RouteAdvertisementROA AS
-SELECT poa.prefix_network, poa.prefix_length, poa.asn, COUNT(roa.network) as roa_ok, (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == poa.prefix_network AND pp.prefix_length == poa.prefix_length) as public
-FROM PrefixOriginASNs poa
+SELECT ann.prefix_network, ann.prefix_length, ann.asn, COUNT(roa.network) as roa_ok, (SELECT count(path_id) > 1 FROM PrefixPaths pp WHERE pp.prefix_network == ann.prefix_network AND pp.prefix_length == ann.prefix_length) as public
+FROM Announcements ann
 INNER JOIN Prefixes p -- to get access to broadcast_address
-ON p.network = poa.prefix_network AND p.length = poa.prefix_length
+ON p.network = ann.prefix_network AND p.length = ann.prefix_length
 LEFT JOIN ROAEntries roa
-ON poa.asn = roa.asn AND poa.prefix_network >= roa.network AND poa.prefix_length <= roa.max_length AND roa.broadcast_address >= p.broadcast_address
-GROUP BY poa.prefix_network, poa.prefix_length, poa.asn;
+ON ann.asn = roa.asn AND ann.prefix_network >= roa.network AND ann.prefix_length <= roa.max_length AND roa.broadcast_address >= p.broadcast_address
+GROUP BY ann.prefix_network, ann.prefix_length, ann.asn;
 
 -- All advertisements and whether they are globally visible
 CREATE VIEW RouteAdvertisementPublic AS

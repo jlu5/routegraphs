@@ -192,7 +192,7 @@ def get_asns(backend):
         '''SELECT a.asn, name, apc.n_peers, COUNT(prefix_network), direct_feed
         FROM ASNs a
         LEFT JOIN Announcements ann ON ann.asn == a.asn
-        LEFT JOIN ASNPeerCount apc ON apc.asn = a.asn
+        LEFT JOIN ASNPeerCount apc ON apc.asn == a.asn
         GROUP BY a.asn
         ORDER BY apc.n_peers DESC;'''):
         asn, as_name, n_peers, n_prefixes, direct_feed = row
@@ -236,8 +236,11 @@ def get_asn_info(backend, asn):
 
     asn_peers = []
     for row in backend.dbconn.execute(
-        '''SELECT DISTINCT peer_asn, name, MAX(receives_transit), MAX(sends_transit)
-        FROM NeighbourASNsBidi
+        '''SELECT DISTINCT peer_asn, name, MAX(receives_transit), MAX(sends_transit) FROM
+        (SELECT receiver_asn AS local_asn, sender_asn AS peer_asn, transit AS receives_transit, 0 AS sends_transit
+        FROM NeighbourASNs UNION
+        SELECT sender_asn AS local_asn, receiver_asn AS peer_asn, 0 AS receives_transit, transit AS sends_transit
+        FROM NeighbourASNs)
         INNER JOIN ASNs on ASNs.asn = peer_asn
         WHERE local_asn = ? AND peer_asn <> local_asn
         GROUP BY peer_asn''', (asn,)):

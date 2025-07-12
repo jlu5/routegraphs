@@ -65,9 +65,9 @@ CREATE TABLE "NeighbourASNs" (
 
 -- Like NeighbourASNs but bidirectional
 CREATE VIEW NeighbourASNsBidi AS
-SELECT receiver_asn AS local_asn, sender_asn AS peer_asn, transit AS receives_transit, 0 AS sends_transit
+SELECT receiver_asn AS local_asn, sender_asn AS peer_asn
 FROM NeighbourASNs UNION
-SELECT sender_asn AS local_asn, receiver_asn AS peer_asn, 0 AS receives_transit, transit AS sends_transit
+SELECT sender_asn AS local_asn, receiver_asn AS peer_asn
 FROM NeighbourASNs;
 
 -- Number of peers per ASN

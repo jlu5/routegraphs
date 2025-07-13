@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+{% include "head.html.j2" %}
+<body onload="doInit()">
+<script>
+function doInit() {
+    const searchParams = new URL(document.location).searchParams;
+    document.getElementById('asnInput').value = searchParams.get("asn");
+}
+</script>
+
+<div class="main">
+{% include "nav.html.j2" %}
+<div class="container">
+{% import "macros.j2" as macros %}
+<h2>Peer Suggester</h2>
+<p>This tool list all ASNs that a network has <em>not</em> peered with yet.</p>
+
+<form action="" method="get">
+    <label for="asn">ASN:</label>
+    <input type="text" name="asn" id="asnInput" placeholder="e.g. 4242421080" onload="doInit()">
+</form>
+<br>
+{% for table in tables %}
+{{ macros.render_table(table) }}
+{% endfor %}
+
+</div> <!-- container -->
+{% include "footer.html.j2" %}
+</div> <!-- main -->
+</body>
+</html>

@@ -350,3 +350,48 @@ def get_grc_leaks(backend):
                   data, show_count=True)
         ],
         db_last_update=_get_last_update())
+
+@app.route("/peer-suggester")
+@wrap_get_backend
+def get_suggested_peers(backend):
+    asn = flask.request.args.get('asn')
+    tables = []
+
+    if asn:
+        if not backend.dbconn.execute(
+            '''
+            SELECT 1
+            FROM ASNs a
+            WHERE asn == ?
+        ''', (asn,)).fetchone():
+            return render_error(f'AS{asn} is not in the network')
+
+        data = []
+        for peer_asn, name, n_peers in backend.dbconn.execute(
+            '''
+            SELECT a.asn, name, n_peers
+            FROM ASNs a
+            INNER JOIN ASNPeerCount apc
+            ON a.asn == apc.asn
+            WHERE name <> "" AND a.asn <> ? AND a.asn NOT IN (
+                SELECT peer_asn
+                FROM NeighbourASNsBidi
+                WHERE local_asn == ?
+            )
+            ORDER BY n_peers DESC
+            ''', (asn, asn)):
+            data.append((_get_asn_link(peer_asn), name, n_peers,
+                         _get_explorer_link('aut-num', f'AS{peer_asn}')))
+
+        tables.append(
+            Table(f"ASNs not peered with {asn}",
+                  ['ASN', 'Name', '# Peers', 'Contact Info'],
+                  data,
+                  heading_type='h3')
+        )
+
+    return flask.render_template(
+        'peersuggester.html.j2',
+        page_title='Peer Suggester',
+        tables=tables,
+        db_last_update=_get_last_update())

@@ -88,6 +88,8 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
             )
             if path_index > 0:
                 previous_asn = as_path[path_index-1]
+                if previous_asn == asn:
+                    continue
                 dbconn.execute(
                     "INSERT OR IGNORE INTO NeighbourASNs(receiver_asn, sender_asn) VALUES(?, ?)",
                     (previous_asn, asn)

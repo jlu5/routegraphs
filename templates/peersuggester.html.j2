@@ -14,7 +14,9 @@ function doInit() {
 <div class="container">
 {% import "macros.j2" as macros %}
 <h2>Peer Suggester</h2>
-<p>This tool list all ASNs that a network has <em>not</em> peered with yet.</p>
+<p>This tool lists all ASNs that a network has <em>not</em> peered with yet.</p>
+<p>Note that this list is not latency-aware - for ideal performance, I recommend only peering
+with nodes having <= 50ms latency.</p>
 
 <form action="" method="get">
     <label for="asn">ASN:</label>

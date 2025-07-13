@@ -263,7 +263,7 @@ def get_asn_info(backend, asn):
         asn_peers.append((_get_asn_link(peer_asn), peer_as_name, receives_transit, sends_transit))
 
     return flask.render_template(
-        'asns.html.j2',
+        'asn.html.j2',
         page_title=f'AS info for {asn}',
         asn=asn,
         as_name=as_name,

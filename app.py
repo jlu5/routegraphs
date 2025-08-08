@@ -245,7 +245,7 @@ def get_asn_info(backend, asn):
         WHERE local_asn = ? AND peer_asn <> local_asn
         GROUP BY peer_asn''', (asn,)):
         peer_asn, peer_as_name, receives_transit, sends_transit = row
-        peer_as_name = _format_asn_name(asn, peer_as_name)
+        peer_as_name = _format_asn_name(peer_asn, peer_as_name)
         # We only know for sure whether an ASN receives transit if they are a direct feed...
         if sends_transit:
             sends_transit = _EMOJI_TRUE

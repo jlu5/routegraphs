@@ -20,6 +20,7 @@ class PathsToPrefixResult:
 
 class RouteGraph():
     def __init__(self, db_filename):
+        self._db_filename = db_filename
         self.dbconn = sqlite3.connect(f'file:{db_filename}?mode=ro')
         self.dbconn.row_factory = self._row_factory
 
@@ -27,6 +28,9 @@ class RouteGraph():
         self.graph = networkx.Graph()
         for edge in edges:
             self.graph.add_edge(*edge)
+
+    def __repr__(self):
+        return f'<RouteGraph instance for {self._db_filename}>'
 
     @staticmethod
     def _row_factory(_cursor, row):
@@ -195,22 +199,46 @@ class RouteGraph():
             _add_path(path, is_guessed=True)
         return dot
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('db_filename', help='SQLite DB to read FROM')
-    parser.add_argument('out_filename', help='file to export .dot graph to')
-    parser.add_argument('target', help='target prefix to graph')
-    parser.add_argument('source_asn', help='source ASNs to graph FROM', type=int, nargs='+')
-    args = parser.parse_args()
-
+def _graph(args):
     routegraph = RouteGraph(args.db_filename)
-
     result = routegraph.asns_paths_to_prefix(args.target, args.source_asn)
     if result:
         print("Paths to graph:", result)
         dot = routegraph.graph_result(args.source_asn, result)
         dot.save(args.out_filename)
 
+def _interact(args):
+    # pylint: disable=import-outside-toplevel
+    import code
+    routegraph = RouteGraph(args.db_filename)
+    banner = 'Entering interactive Python console. Use "rg" to access the RouteGraph instance'
+    code.interact(local={'rg': routegraph, 'networkx': networkx}, banner=banner)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('db_filename', help='SQLite DB to read from')
+
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    graph_parser = subparsers.add_parser(
+        'graph', help='Generate a .dot graph for a route'
+    )
+    graph_parser.add_argument('out_filename', help='file to export .dot graph to')
+    graph_parser.add_argument('target', help='target prefix to graph')
+    graph_parser.add_argument('source_asn', help='source ASNs to graph FROM', type=int, nargs='+')
+    graph_parser.set_defaults(func=_graph)
+
+    interact_parser = subparsers.add_parser(
+        'interact', help='Start an interactive session with the database'
+    )
+    interact_parser.set_defaults(func=_interact)
+    args = parser.parse_args()
+
+    if getattr(args, 'func', None):
+        args.func(args)
+    else:
+        # Print help if no subcommand was chosen
+        parser.print_help()
 
 if __name__ == '__main__':
     main()

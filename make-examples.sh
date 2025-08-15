@@ -12,7 +12,7 @@ graph() {
     name="$1"
     set -x
     shift
-    python3 routegraphs.py "$DB" "$DIR/$name".dot "$@"
+    python3 routegraphs.py "$DB" graph "$DIR/$name".dot "$@"
     dot -Tsvg "$DIR/$name".dot > "$DIR/$name".svg
     echo "Created $DIR/$name.svg"
     set +x
@@ -25,9 +25,9 @@ graph test-highdef-v6 fd86:bad:11b7::/48 4242423914 4242421588 64719 4242421817 
 graph test-highdef 172.22.108.0/25 4242423914 4242421588 64719 4242421817 4242423088
 graph test-hackint 172.20.66.64/28 4242423914 4242421588 64719 4242421817 4242423088
 graph test-no-grc-feed 172.20.0.53 4242420101 4242423905
-graph test-no-grc-feed-2 fd86:bad:11b7::/48 4242420101 4242423905 65026 4242423914
+graph test-no-grc-feed-2 fd86:bad:11b7::/48 4242420101 4242423905 4242423914
 graph test-roa-fail 10.30.128.0/20 4242423914 4242421588 64719 4242421080 4242423088
 graph test-anycast 172.23.0.53 4242421080 4242422601 4242423914 4242423088 4242421817 4242421588 64719
-graph test-no-backbone 10.127.111.128/25 4242421080 4201271111 4242422458
+graph test-no-backbone 10.127.111.128/25 4242421080 4201271111
 graph test-resolve-ip fd42:d42:d42:80::1 4242421080 64719 4242421588
 graph test-resolve-overlapping-announcements fd42:4242:2601:ac12::1 4242421080

@@ -2,6 +2,7 @@
 """Export BGP routes info from MRT dumps into a SQLite DB for easier querying."""
 import argparse
 import itertools
+import logging
 import pathlib
 import re
 import socket
@@ -9,6 +10,8 @@ import sqlite3
 
 import pybgpkit_parser
 from dn42regparse import get_as_name, get_fields
+
+logger = logging.getLogger("mrt2sql")
 
 _DB_INIT_SCRIPT = pathlib.Path(__file__).parent / 'dbinit.sql'
 def db_init(db_filename):
@@ -45,6 +48,7 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
     mrt_reader = pybgpkit_parser.Parser(mrt_filename, filters={'type': 'announce'})
     as_names = {}
     for entry in mrt_reader:
+        logger.debug("MRT entry: %s", entry)
         as_path_raw = entry.as_path.split()
         as_path_parts = []
         ok = True
@@ -54,11 +58,11 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
             except ValueError:
                 match = _AS_PATH_SEGMENT_RE.match(path_segment)
                 if not match:
-                    print(f"WARN: Ignoring unsupported AS path {as_path!r}")
+                    logger.warning("Ignoring unsupported AS path %r", as_path_raw)
                     ok = False
                     break
                 asn = int(match.group(1))
-                print(f"Guessing origin ASN {path_segment!r} -> {asn} for path {as_path!r}")
+                logger.info("Guessing origin ASN %r -> %d for path %r", path_segment, asn, as_path_raw)
             as_path_parts.append(asn)
         if not ok:
             continue
@@ -140,20 +144,23 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('db_filename', help='SQLite DB to write to')
     parser.add_argument('-r', '--registry-path', help='path to dn42 registry')
+    parser.add_argument('-v', '--verbose', help='enables debug logging', action='store_true')
     parser.add_argument('mrt_filenames', help='MRT dump filenames', nargs='+')
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
+
     if not args.registry_path:
-        print('WARNING: dn42 registry path not specified, AS names will be missing')
+        logger.warning('dn42 registry path not specified, AS names will be missing')
 
     db = db_init(args.db_filename)
 
     if args.registry_path:
-        print(f'Reading ROA entries from {args.registry_path}')
+        logger.info('Reading ROA entries from %s', args.registry_path)
         parse_roa(db, args.registry_path)
 
     for filename in args.mrt_filenames:
-        print(f'Reading MRT dump {filename}')
+        logger.info('Reading MRT dump %s', filename)
         parse_mrt(filename, db, args.registry_path)
 
 if __name__ == '__main__':

@@ -43,11 +43,21 @@ def unpack_cidr(prefix: str) -> tuple[bytes, int, bytes]:
 # FIXME(clearnet support): this is not entirely correct
 # what does it mean to have multiple origin ASes but the rest of the path be the same?
 _AS_PATH_SEGMENT_RE = re.compile('\\{(\\d+)')
-def parse_mrt(mrt_filename, dbconn, registry_path=None):
+def parse_mrt(mrt_filename, dbconn, registry_path=None, batch_size=1000, cache_size=-500000):
+    # Disable foreign keys for bulk insert
+    dbconn.execute("PRAGMA foreign_keys = OFF;")
+    dbconn.execute("PRAGMA journal_mode = WAL;")
+    dbconn.execute("PRAGMA synchronous = OFF;")
+    dbconn.execute("PRAGMA locking_mode = EXCLUSIVE;")
+
+    if not isinstance(cache_size, int):
+        raise ValueError(f"Invalid cache_size {cache_size!r}")
+    dbconn.execute(f"PRAGMA cache_size = {cache_size};")
+
     # pylint: disable=no-member
     mrt_reader = pybgpkit_parser.Parser(mrt_filename, filters={'type': 'announce'})
     as_names = {}
-    for entry in mrt_reader:
+    for idx, entry in enumerate(mrt_reader):
         logger.debug("MRT entry: %s", entry)
         as_path_raw = entry.as_path.split()
         as_path_parts = []
@@ -113,7 +123,10 @@ def parse_mrt(mrt_filename, dbconn, registry_path=None):
             "INSERT OR IGNORE INTO Announcements VALUES(?, ?, ?)",
             (as_path[-1], network_address_packed, prefix_length)
         )
+        if idx % batch_size == 0:
+            dbconn.commit()
     dbconn.commit()
+    dbconn.execute("PRAGMA foreign_keys = ON;")
 
 # XXX hardcoded
 _DEFAULT_V4_MAX_LENGTH = 29

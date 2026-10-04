@@ -27,7 +27,7 @@ _EMOJI_UNKNOWN = '❓'
 @dataclass
 class Table():
     name: str | tuple[str, str]  # tuple form represents (heading text, hover text)
-    headings: List[str]
+    headings: List[str | tuple[str, str]]
     data: List[Iterable[Any]]  # list of rows
     true_emoji: str = _EMOJI_TRUE
     false_emoji: str = _EMOJI_FALSE
@@ -88,6 +88,8 @@ def get_graph(backend, roa_valid_origins=None):
     return dot.pipe(format='svg').decode('utf-8')
 
 def _get_last_update():
+    if not DB_FILENAME:
+        return None
     try:
         db_last_update = os.stat(DB_FILENAME).st_mtime
         dt = datetime.datetime.utcfromtimestamp(db_last_update)

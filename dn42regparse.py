@@ -6,7 +6,7 @@ import pprint
 import re
 
 _field_re = re.compile(r'[a-z-]+?: .*?')
-def get_fields(path: str) -> dict[str, str]:
+def get_fields(path: str | pathlib.Path) -> dict[str, str]:
     """Fetch fields from the dn42 resource object at path."""
     fields = {}
     try:

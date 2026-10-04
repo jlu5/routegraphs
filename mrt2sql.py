@@ -22,7 +22,7 @@ def db_init(db_filename):
     con.commit()
     return con
 
-def unpack_cidr(prefix: str) -> (bytes, int, bytes):
+def unpack_cidr(prefix: str) -> tuple[bytes, int, bytes]:
     """Unpack a CIDR prefix string into binary network address, prefix length, and binary broadcast address"""
     network_address, prefix_length = prefix.split('/', 1)
     prefix_length = int(prefix_length)
